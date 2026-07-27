@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="0.55" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.3" cy="0.22" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#sheen)"/>
+
+  <!-- Monogram: bold shape stays legible at 16px, accent letter nods to sync -->
+  <text
+    x="65"
+    y="85"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="56"
+    font-weight="900"
+    letter-spacing="-3"
+    fill="#000000"
+    opacity="0.22"
+  >STG</text>
+  <text
+    x="64"
+    y="83"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="56"
+    font-weight="900"
+    letter-spacing="-3"
+    fill="#FFFFFF"
+  >STG</text>
+</svg>
