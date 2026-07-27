@@ -6,9 +6,21 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <div class="toolbar">
-      <button id="sync-now">Synchroniser maintenant</button>
-    </div>
+    <header class="topbar">
+      <div class="brand">
+        <img src="../icons/icon.svg" alt="" class="brand-icon" />
+        <span class="brand-name">Sync Tab Groups</span>
+      </div>
+      <button id="sync-now" class="icon-button" title="Synchroniser maintenant" aria-label="Synchroniser maintenant">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <path
+            d="M3 12a9 9 0 0 1 15.3-6.4L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.3 6.4L3 16M3 21v-5h5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+    </header>
     <div id="app"></div>
     <script type="module" src="index.js"></script>
   </body>

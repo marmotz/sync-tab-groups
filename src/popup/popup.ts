@@ -42,6 +42,7 @@ function groupRow(colorName: string, name: string, tabCount: number, buttons: HT
   const dot = document.createElement('span');
   dot.className = 'group-color';
   dot.style.backgroundColor = colorName;
+  dot.style.color = colorName;
   titleWrap.appendChild(dot);
 
   const nameSpan = document.createElement('span');
@@ -66,9 +67,12 @@ function groupRow(colorName: string, name: string, tabCount: number, buttons: HT
   return row;
 }
 
-function makeButton(label: string, onClick: () => void): HTMLButtonElement {
+function makeButton(label: string, onClick: () => void, variant?: 'danger'): HTMLButtonElement {
   const button = document.createElement('button');
   button.textContent = label;
+  if (variant !== undefined) {
+    button.classList.add(variant);
+  }
   button.addEventListener('click', () => {
     button.disabled = true;
     onClick();
@@ -148,9 +152,13 @@ function renderOpenSection(groups: SyncedGroupInfo[]): HTMLElement {
     const closeBtn = makeButton('Fermer', () => {
       void closeGroup(localGroupId).then(scheduleRender);
     });
-    const deleteBtn = makeButton('Supprimer', () => {
-      void deleteGroupEverywhere(info.syncId, info.group.title).then(scheduleRender);
-    });
+    const deleteBtn = makeButton(
+      'Supprimer',
+      () => {
+        void deleteGroupEverywhere(info.syncId, info.group.title).then(scheduleRender);
+      },
+      'danger',
+    );
     el.appendChild(groupRow(info.group.color, info.group.title, info.group.tabs.length, [closeBtn, deleteBtn]));
   }
 
@@ -168,9 +176,13 @@ function renderClosedSection(groups: SyncedGroupInfo[]): HTMLElement {
     const openBtn = makeButton('Ouvrir', () => {
       void openGroup(info.syncId, info.group).then(scheduleRender);
     });
-    const deleteBtn = makeButton('Supprimer', () => {
-      void deleteGroupEverywhere(info.syncId, info.group.title).then(scheduleRender);
-    });
+    const deleteBtn = makeButton(
+      'Supprimer',
+      () => {
+        void deleteGroupEverywhere(info.syncId, info.group.title).then(scheduleRender);
+      },
+      'danger',
+    );
     el.appendChild(groupRow(info.group.color, info.group.title, info.group.tabs.length, [openBtn, deleteBtn]));
   }
 

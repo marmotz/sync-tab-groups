@@ -22,11 +22,38 @@ export interface SyncedGroupInfo {
   localGroupId?: number;
 }
 
+/**
+ * Approximates each local group's on-screen position: the browser exposes no explicit
+ * order for tabGroups.query, so we derive it from the index of its earliest tab within
+ * its window (tabs are returned in strip order).
+ */
+async function getLocalGroupOrder(): Promise<Map<number, number>> {
+  const tabs = await browser.tabs.query({});
+  const order = new Map<number, number>();
+
+  for (const tab of tabs) {
+    if (tab.groupId === undefined || tab.groupId === -1 || tab.windowId === undefined) {
+      continue;
+    }
+    const key = tab.windowId * 1_000_000 + tab.index;
+    const existing = order.get(tab.groupId);
+    if (existing === undefined || key < existing) {
+      order.set(tab.groupId, key);
+    }
+  }
+
+  return order;
+}
+
 export async function listUnsharedLocalGroups(): Promise<LocalGroupInfo[]> {
-  const [allGroups, mappedIds] = await Promise.all([browser.tabGroups.query({}), getAllMappedLocalGroupIds()]);
+  const [allGroups, mappedIds, order] = await Promise.all([
+    browser.tabGroups.query({}),
+    getAllMappedLocalGroupIds(),
+    getLocalGroupOrder(),
+  ]);
   const unshared = allGroups.filter((group) => !mappedIds.has(group.id));
 
-  return Promise.all(
+  const infos = await Promise.all(
     unshared.map(async (group) => {
       const tabs = await browser.tabs.query({ groupId: group.id });
       return {
@@ -37,16 +64,30 @@ export async function listUnsharedLocalGroups(): Promise<LocalGroupInfo[]> {
       };
     }),
   );
+
+  infos.sort((a, b) => (order.get(a.localGroupId) ?? 0) - (order.get(b.localGroupId) ?? 0));
+
+  return infos;
 }
 
 export async function listSyncedGroups(): Promise<SyncedGroupInfo[]> {
-  const allSynced = await getAllSyncedGroups();
+  const [allSynced, order] = await Promise.all([getAllSyncedGroups(), getLocalGroupOrder()]);
   const infos: SyncedGroupInfo[] = [];
 
   for (const [syncId, group] of allSynced) {
     const localGroupId = await getLocalGroupIdForSyncId(syncId);
     infos.push({ syncId, group, localGroupId });
   }
+
+  infos.sort((a, b) => {
+    if (a.localGroupId !== undefined && b.localGroupId !== undefined) {
+      return (order.get(a.localGroupId) ?? 0) - (order.get(b.localGroupId) ?? 0);
+    }
+    if (a.localGroupId === undefined && b.localGroupId === undefined) {
+      return a.group.title.localeCompare(b.group.title);
+    }
+    return a.localGroupId !== undefined ? -1 : 1;
+  });
 
   return infos;
 }
