@@ -2,6 +2,7 @@ import browser from 'webextension-polyfill';
 import {
   closeGroup,
   deleteGroupEverywhere,
+  forceSyncNow,
   listSyncedGroups,
   listUnsharedLocalGroups,
   openGroup,
@@ -179,5 +180,20 @@ function renderClosedSection(groups: SyncedGroupInfo[]): HTMLElement {
 browser.storage.onChanged.addListener(() => {
   scheduleRender();
 });
+
+const syncNowButton = document.getElementById('sync-now');
+if (syncNowButton instanceof HTMLButtonElement) {
+  syncNowButton.addEventListener('click', () => {
+    syncNowButton.disabled = true;
+    void forceSyncNow()
+      .then(scheduleRender)
+      .catch((error: unknown) => {
+        console.error('Failed to force sync', error);
+      })
+      .finally(() => {
+        syncNowButton.disabled = false;
+      });
+  });
+}
 
 scheduleRender();

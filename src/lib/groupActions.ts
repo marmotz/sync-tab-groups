@@ -5,7 +5,7 @@ import { devLog } from './devLog';
 import { getAllMappedLocalGroupIds, getLocalGroupIdForSyncId, setMapping } from './localGroupMap';
 import { readLocalGroupState } from './localState';
 import type { SyncedGroup } from './model';
-import { closeLocalGroup } from './reconciler';
+import { applyRemoteGroup, closeLocalGroup } from './reconciler';
 import { setSnapshot } from './snapshot';
 import { getAllSyncedGroups, removeSyncedGroup, setSyncedGroup } from './syncStorage';
 
@@ -101,4 +101,26 @@ export async function closeGroup(localGroupId: number): Promise<void> {
 export async function deleteGroupEverywhere(syncId: string, title: string): Promise<void> {
   devLog(`Groupe "${title}" supprimé de la sync → partout`);
   await removeSyncedGroup(syncId);
+}
+
+/**
+ * Manual catch-up pull: re-applies the current state of every synced group that is open
+ * here, regardless of storage.onChanged events. Needed because a suspended background
+ * service worker can miss those events, leaving a device stuck until something else
+ * triggers a write.
+ */
+export async function forceSyncNow(): Promise<void> {
+  const allSynced = await getAllSyncedGroups();
+
+  for (const [syncId, group] of allSynced) {
+    const localGroupId = await getLocalGroupIdForSyncId(syncId);
+    if (localGroupId === undefined) {
+      continue;
+    }
+
+    await applyRemoteGroup(localGroupId, group);
+    await setSnapshot(syncId, group);
+  }
+
+  devLog('Synchronisation forcée exécutée');
 }

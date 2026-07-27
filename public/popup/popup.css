@@ -60,3 +60,15 @@ h1 {
   color: #777;
   padding: 8px 4px;
 }
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.toolbar button {
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
