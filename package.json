@@ -15,7 +15,7 @@
     "web-ext:run": "bun run build && web-ext run --source-dir dist",
     "web-ext:build": "bun run build && web-ext lint --source-dir dist && web-ext build --source-dir dist --artifacts-dir builds --overwrite-dest",
     "web-ext:sign": "bun --env-file=.env run web-ext:sign:command",
-    "web-ext:sign:command": "bun run build && web-ext sign --source-dir dist --artifacts-dir builds --channel listed --api-key=\"$WEB_EXT_API_KEY\" --api-secret=\"$WEB_EXT_API_SECRET\"",
+    "web-ext:sign:command": "bun run build && bun run source:archive && web-ext sign --source-dir dist --artifacts-dir builds --channel listed --approval-timeout 0 --upload-source-code builds/source.zip --api-key=\"$WEB_EXT_API_KEY\" --api-secret=\"$WEB_EXT_API_SECRET\"",
     "web-ext:sign:dev": "bun --env-file=.env run web-ext:sign:dev:command",
     "web-ext:sign:dev:command": "bun run build && web-ext sign --source-dir dist --artifacts-dir builds --channel unlisted --approval-timeout 0 --api-key=\"$WEB_EXT_API_KEY\" --api-secret=\"$WEB_EXT_API_SECRET\"",
     "source:archive": "bun run scripts/create-source-archive.ts"
