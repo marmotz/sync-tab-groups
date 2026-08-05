@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserMock } from '../setup';
-import { runSyncLocalGroup } from '../../src/background/localListeners';
+import { handleGroupRemoved, noteTabLeavingGroup, runSyncLocalGroup } from '../../src/background/localListeners';
+import { markIntentionalClose } from '../../src/lib/intentionalClose';
+import { getLocalGroupIdForSyncId } from '../../src/lib/localGroupMap';
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -67,5 +69,63 @@ describe('runSyncLocalGroup - overlapping runs for the same group', () => {
 
     // Second run finds no change versus the snapshot the first run just wrote: single write only.
     expect(browserMock.storage.sync.set).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('handleGroupRemoved', () => {
+  it('keeps the synced group data when the close was marked intentional (the "Fermer" button), even if the group had only one tab left', async () => {
+    await browserMock.storage.local.set({ localGroupMap: { '7': 'sync-1' } });
+    await browserMock.storage.sync.set({ 'group:sync-1': { id: 'sync-1', title: 'Work', tabs: [] } });
+    await markIntentionalClose(7);
+    noteTabLeavingGroup(7, 1);
+
+    await handleGroupRemoved(7, 'Work');
+
+    expect(browserMock.storage.sync.remove).not.toHaveBeenCalled();
+    expect(await getLocalGroupIdForSyncId('sync-1')).toBeUndefined();
+    const stored = await browserMock.storage.sync.get('group:sync-1');
+    expect(stored['group:sync-1']).toBeDefined();
+  });
+
+  it('deletes the synced group when it emptied out tab-by-tab (last tab closed alone, no intentional marker)', async () => {
+    await browserMock.storage.local.set({ localGroupMap: { '7': 'sync-1' } });
+    await browserMock.storage.sync.set({ 'group:sync-1': { id: 'sync-1', title: 'Work', tabs: [] } });
+    noteTabLeavingGroup(7, 1);
+
+    await handleGroupRemoved(7, 'Work');
+
+    expect(browserMock.storage.sync.remove).toHaveBeenCalledWith('group:sync-1');
+    expect(await getLocalGroupIdForSyncId('sync-1')).toBeUndefined();
+    const stored = await browserMock.storage.sync.get('group:sync-1');
+    expect(stored['group:sync-1']).toBeUndefined();
+  });
+
+  it('keeps the synced group data when several tabs disappeared at once (e.g. native "Delete group"), even without an intentional marker', async () => {
+    await browserMock.storage.local.set({ localGroupMap: { '7': 'sync-1' } });
+    await browserMock.storage.sync.set({ 'group:sync-1': { id: 'sync-1', title: 'Work', tabs: [] } });
+    noteTabLeavingGroup(7, 2);
+
+    await handleGroupRemoved(7, 'Work');
+
+    expect(browserMock.storage.sync.remove).not.toHaveBeenCalled();
+    const stored = await browserMock.storage.sync.get('group:sync-1');
+    expect(stored['group:sync-1']).toBeDefined();
+  });
+
+  it('keeps the synced group data when no removal-burst info was recorded at all (safe default)', async () => {
+    await browserMock.storage.local.set({ localGroupMap: { '7': 'sync-1' } });
+    await browserMock.storage.sync.set({ 'group:sync-1': { id: 'sync-1', title: 'Work', tabs: [] } });
+
+    await handleGroupRemoved(7, 'Work');
+
+    expect(browserMock.storage.sync.remove).not.toHaveBeenCalled();
+    const stored = await browserMock.storage.sync.get('group:sync-1');
+    expect(stored['group:sync-1']).toBeDefined();
+  });
+
+  it('does nothing when the removed group had no sync mapping', async () => {
+    await handleGroupRemoved(7, 'Untracked');
+
+    expect(browserMock.storage.sync.remove).not.toHaveBeenCalled();
   });
 });

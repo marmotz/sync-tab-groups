@@ -102,6 +102,20 @@ export async function applyRemoteGroup(
   });
 }
 
+/**
+ * The local-group mapping can go stale (browser crash, forced quit, service worker
+ * suspended mid-event) leaving a localGroupId that no longer points to a real tabGroup.
+ * Callers use this to detect that before acting on a possibly-orphaned mapping.
+ */
+export async function localGroupExists(localGroupId: number): Promise<boolean> {
+  try {
+    await browser.tabGroups.get(localGroupId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function closeLocalGroup(localGroupId: number): Promise<void> {
   const tabs = await browser.tabs.query({ groupId: localGroupId });
   const ids = tabs.map((tab) => tab.id).filter((id): id is number => id !== undefined);

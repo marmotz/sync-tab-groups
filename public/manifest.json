@@ -1,12 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "Sync Tab Group",
-  "description": "Synchronise les groupes d'onglets et leur contenu entre devices",
-  "version": "0.1.0",
+  "name": "__MSG_extensionName__",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
+  "version": "0.3.0",
   "browser_specific_settings": {
     "gecko": {
-      "id": "sync-tab-group@marmotz",
-      "strict_min_version": "139.0"
+      "id": "sync-tab-groups@marmotz.dev",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   },
   "permissions": ["tabs", "tabGroups", "storage"],
@@ -23,7 +27,7 @@
   },
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "Sync Tab Group",
+    "default_title": "__MSG_extensionName__",
     "default_icon": {
       "16": "icons/icon.svg",
       "32": "icons/icon.svg"

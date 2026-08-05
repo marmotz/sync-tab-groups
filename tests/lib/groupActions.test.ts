@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserMock } from '../setup';
-import { forceSyncNow, listSyncedGroups, listUnsharedLocalGroups } from '../../src/lib/groupActions';
-import { setMapping } from '../../src/lib/localGroupMap';
+import { closeGroup, forceSyncNow, listSyncedGroups, listUnsharedLocalGroups } from '../../src/lib/groupActions';
+import { consumeIntentionalClose } from '../../src/lib/intentionalClose';
+import { getLocalGroupIdForSyncId, setMapping } from '../../src/lib/localGroupMap';
 import type { SyncedGroup } from '../../src/lib/model';
 import { setSyncedGroup } from '../../src/lib/syncStorage';
 
 beforeEach(() => {
   browserMock.storage.local.__reset();
   browserMock.storage.sync.__reset();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   browserMock.management.getSelf.mockResolvedValue({ installType: 'normal' });
 });
 
@@ -54,6 +55,19 @@ describe('forceSyncNow', () => {
 
     expect(browserMock.tabGroups.get).not.toHaveBeenCalled();
     expect(browserMock.tabs.query).not.toHaveBeenCalled();
+  });
+
+  it('cleans up a stale mapping instead of applying to a group that no longer exists', async () => {
+    const group = makeGroup();
+    await setSyncedGroup(group);
+    await setMapping(7, group.id);
+
+    browserMock.tabGroups.get.mockRejectedValue(new Error('No group with id: 7'));
+
+    await forceSyncNow();
+
+    expect(browserMock.tabs.query).not.toHaveBeenCalled();
+    expect(await getLocalGroupIdForSyncId(group.id)).toBeUndefined();
   });
 });
 
@@ -107,5 +121,51 @@ describe('listSyncedGroups', () => {
     const result = await listSyncedGroups();
 
     expect(result.map((info) => info.group.title)).toEqual(['Alpha', 'Zebra', 'Beta', 'Zeta']);
+  });
+
+  it('treats a group as closed and clears its mapping when the local tabGroup no longer exists', async () => {
+    const group = makeGroup({ id: 'sync-stale', title: 'Stale' });
+    await setSyncedGroup(group);
+    await setMapping(99, group.id);
+
+    browserMock.tabGroups.get.mockRejectedValue(new Error('No group with id: 99'));
+    browserMock.tabs.query.mockResolvedValue([]);
+
+    const result = await listSyncedGroups();
+
+    expect(result.find((info) => info.syncId === group.id)?.localGroupId).toBeUndefined();
+    expect(await getLocalGroupIdForSyncId(group.id)).toBeUndefined();
+  });
+});
+
+describe('closeGroup', () => {
+  it('closes the local tabGroup when it still exists', async () => {
+    browserMock.tabGroups.get.mockResolvedValue({ id: 7, windowId: 1, title: '', color: 'grey', collapsed: false });
+    browserMock.tabs.query.mockResolvedValue([{ id: 1, groupId: 7 }]);
+
+    await closeGroup(7);
+
+    expect(browserMock.tabs.remove).toHaveBeenCalledWith([1]);
+  });
+
+  it('marks the close as intentional so the background listener keeps the synced data', async () => {
+    browserMock.tabGroups.get.mockResolvedValue({ id: 7, windowId: 1, title: '', color: 'grey', collapsed: false });
+    browserMock.tabs.query.mockResolvedValue([{ id: 1, groupId: 7 }]);
+
+    await closeGroup(7);
+
+    expect(await consumeIntentionalClose(7)).toBe(true);
+  });
+
+  it('clears the mapping instead of failing silently when the tabGroup is already gone', async () => {
+    const group = makeGroup({ id: 'sync-gone' });
+    await setSyncedGroup(group);
+    await setMapping(7, group.id);
+    browserMock.tabGroups.get.mockRejectedValue(new Error('No group with id: 7'));
+
+    await closeGroup(7);
+
+    expect(browserMock.tabs.remove).not.toHaveBeenCalled();
+    expect(await getLocalGroupIdForSyncId(group.id)).toBeUndefined();
   });
 });

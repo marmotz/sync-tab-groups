@@ -1,0 +1,44 @@
+{
+  "extensionName": {
+    "message": "Sync Tab Groups"
+  },
+  "extensionDescription": {
+    "message": "Synchronizes tab groups and their content across devices"
+  },
+  "syncNowTitle": {
+    "message": "Sync now"
+  },
+  "sectionLocalGroups": {
+    "message": "Local groups"
+  },
+  "sectionOpenGroups": {
+    "message": "Synced groups (open here)"
+  },
+  "sectionClosedGroups": {
+    "message": "Synced groups (closed here)"
+  },
+  "emptyLocalGroups": {
+    "message": "No local groups"
+  },
+  "emptyOpenGroups": {
+    "message": "No open synced groups"
+  },
+  "emptyClosedGroups": {
+    "message": "No closed synced groups"
+  },
+  "untitledGroup": {
+    "message": "(untitled)"
+  },
+  "buttonShare": {
+    "message": "Share"
+  },
+  "buttonClose": {
+    "message": "Close"
+  },
+  "buttonDelete": {
+    "message": "Delete"
+  },
+  "buttonOpen": {
+    "message": "Open"
+  }
+}

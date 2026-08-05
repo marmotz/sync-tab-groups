@@ -10,6 +10,7 @@ import {
   type LocalGroupInfo,
   type SyncedGroupInfo,
 } from '../lib/groupActions';
+import { t } from '../lib/i18n';
 
 const appElement = document.getElementById('app');
 if (appElement === null) {
@@ -47,7 +48,7 @@ function groupRow(colorName: string, name: string, tabCount: number, buttons: HT
 
   const nameSpan = document.createElement('span');
   nameSpan.className = 'group-name';
-  nameSpan.textContent = name || '(sans titre)';
+  nameSpan.textContent = name || t('untitledGroup');
   titleWrap.appendChild(nameSpan);
 
   const countSpan = document.createElement('span');
@@ -121,14 +122,14 @@ function scheduleRender(): void {
 }
 
 function renderLocalSection(groups: LocalGroupInfo[]): HTMLElement {
-  const el = section('Groupes locaux');
+  const el = section(t('sectionLocalGroups'));
   if (groups.length === 0) {
-    el.appendChild(emptyRow('Aucun groupe local'));
+    el.appendChild(emptyRow(t('emptyLocalGroups')));
     return el;
   }
 
   for (const group of groups) {
-    const shareBtn = makeButton('Partager', () => {
+    const shareBtn = makeButton(t('buttonShare'), () => {
       void shareGroup(group.localGroupId).then(scheduleRender);
     });
     el.appendChild(groupRow(group.color, group.title, group.tabCount, [shareBtn]));
@@ -138,9 +139,9 @@ function renderLocalSection(groups: LocalGroupInfo[]): HTMLElement {
 }
 
 function renderOpenSection(groups: SyncedGroupInfo[]): HTMLElement {
-  const el = section('Groupes synchronisés (ouverts ici)');
+  const el = section(t('sectionOpenGroups'));
   if (groups.length === 0) {
-    el.appendChild(emptyRow('Aucun groupe synchronisé ouvert'));
+    el.appendChild(emptyRow(t('emptyOpenGroups')));
     return el;
   }
 
@@ -149,11 +150,11 @@ function renderOpenSection(groups: SyncedGroupInfo[]): HTMLElement {
     if (localGroupId === undefined) {
       continue;
     }
-    const closeBtn = makeButton('Fermer', () => {
+    const closeBtn = makeButton(t('buttonClose'), () => {
       void closeGroup(localGroupId).then(scheduleRender);
     });
     const deleteBtn = makeButton(
-      'Supprimer',
+      t('buttonDelete'),
       () => {
         void deleteGroupEverywhere(info.syncId, info.group.title).then(scheduleRender);
       },
@@ -166,18 +167,18 @@ function renderOpenSection(groups: SyncedGroupInfo[]): HTMLElement {
 }
 
 function renderClosedSection(groups: SyncedGroupInfo[]): HTMLElement {
-  const el = section('Groupes synchronisés (fermés ici)');
+  const el = section(t('sectionClosedGroups'));
   if (groups.length === 0) {
-    el.appendChild(emptyRow('Aucun groupe synchronisé fermé'));
+    el.appendChild(emptyRow(t('emptyClosedGroups')));
     return el;
   }
 
   for (const info of groups) {
-    const openBtn = makeButton('Ouvrir', () => {
+    const openBtn = makeButton(t('buttonOpen'), () => {
       void openGroup(info.syncId, info.group).then(scheduleRender);
     });
     const deleteBtn = makeButton(
-      'Supprimer',
+      t('buttonDelete'),
       () => {
         void deleteGroupEverywhere(info.syncId, info.group.title).then(scheduleRender);
       },
@@ -195,6 +196,8 @@ browser.storage.onChanged.addListener(() => {
 
 const syncNowButton = document.getElementById('sync-now');
 if (syncNowButton instanceof HTMLButtonElement) {
+  syncNowButton.title = t('syncNowTitle');
+  syncNowButton.setAttribute('aria-label', t('syncNowTitle'));
   syncNowButton.addEventListener('click', () => {
     syncNowButton.disabled = true;
     void forceSyncNow()

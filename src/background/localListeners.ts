@@ -2,11 +2,12 @@ import browser from 'webextension-polyfill';
 import type { Tabs } from 'webextension-polyfill';
 import { getDeviceId } from '../lib/deviceId';
 import { devLog } from '../lib/devLog';
+import { consumeIntentionalClose } from '../lib/intentionalClose';
 import { getAllMappedLocalGroupIds, getSyncIdForLocalGroup, removeMappingByLocalGroupId } from '../lib/localGroupMap';
 import { readLocalGroupState } from '../lib/localState';
 import { diffTabUrls, groupContentEqual } from '../lib/model';
 import { clearSnapshot, getSnapshot, setSnapshot } from '../lib/snapshot';
-import { setSyncedGroup } from '../lib/syncStorage';
+import { removeSyncedGroup, setSyncedGroup } from '../lib/syncStorage';
 import { resolveTabGroupChange } from '../lib/tabGroupTracking';
 
 const DEBOUNCE_MS = 500;
@@ -85,7 +86,7 @@ async function syncLocalGroup(localGroupId: number): Promise<void> {
   await setSnapshot(syncId, currentState);
 }
 
-async function handleGroupRemoved(localGroupId: number, title: string | undefined): Promise<void> {
+export async function handleGroupRemoved(localGroupId: number, title: string | undefined): Promise<void> {
   const timer = pendingTimers.get(localGroupId);
   if (timer !== undefined) {
     clearTimeout(timer);
@@ -97,8 +98,29 @@ async function handleGroupRemoved(localGroupId: number, title: string | undefine
     return;
   }
 
-  devLog(`Groupe "${title ?? ''}" fermé sur ce device (reste synchronisé, réouvrable ailleurs)`);
+  const wasIntentional = await consumeIntentionalClose(localGroupId);
+  const sizeBeforeRemoval = consumeGroupSizeBeforeRemovalBurst(localGroupId);
+  // A whole group closed at once (our own "Fermer" button, or a native browser action
+  // like "Delete group") had more than one tab an instant before vanishing. Only a group
+  // that was already down to its very last tab (emptied one tab at a time) has nothing
+  // meaningful left to keep synced. Default to preserving when we can't tell (e.g. the
+  // background script just restarted and tracking wasn't seeded yet) to avoid silent
+  // data loss.
+  const emptiedTabByTab = !wasIntentional && sizeBeforeRemoval === 1;
 
+  if (!emptiedTabByTab) {
+    devLog(`Groupe "${title ?? ''}" fermé sur ce device (reste synchronisé, réouvrable ailleurs)`);
+    await removeMappingByLocalGroupId(localGroupId);
+    await clearSnapshot(syncId);
+    return;
+  }
+
+  // The group didn't go through an explicit close: it emptied out tab-by-tab (last tab
+  // closed, or dragged out of the group). A group with no tabs left can't be reopened
+  // and has nothing meaningful to keep synced, so drop it everywhere rather than leaving
+  // a stale/empty entry behind.
+  devLog(`Groupe "${title ?? ''}" vidé onglet par onglet → supprimé de la synchro`);
+  await removeSyncedGroup(syncId);
   await removeMappingByLocalGroupId(localGroupId);
   await clearSnapshot(syncId);
 }
@@ -114,6 +136,55 @@ async function resyncAllSharedGroups(): Promise<void> {
 // or closed) we can still resync the group it left, even though the tab's current
 // state no longer references it.
 const lastKnownGroupIdByTab = new Map<number, number>();
+
+function countTabsInGroup(groupId: number): number {
+  let count = 0;
+  for (const currentGroupId of lastKnownGroupIdByTab.values()) {
+    if (currentGroupId === groupId) {
+      count++;
+    }
+  }
+  return count;
+}
+
+// Distinguishes a group closed all-at-once (several tabs disappearing within the same
+// burst) from one emptied out one tab at a time: records how many tabs the group had
+// right before the *first* removal of a burst, so a later removal in the same burst
+// doesn't overwrite it with an already-shrunk count. A short burst window (well above
+// what a single synchronous native close takes, well below human click intervals) is
+// what separates the two.
+const BURST_WINDOW_MS = 150;
+const groupSizeBeforeRemovalBurst = new Map<number, number>();
+const burstResetTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+export function noteTabLeavingGroup(groupId: number, sizeIncludingThisTab: number): void {
+  if (!groupSizeBeforeRemovalBurst.has(groupId)) {
+    groupSizeBeforeRemovalBurst.set(groupId, sizeIncludingThisTab);
+  }
+
+  const existingTimer = burstResetTimers.get(groupId);
+  if (existingTimer !== undefined) {
+    clearTimeout(existingTimer);
+  }
+  burstResetTimers.set(
+    groupId,
+    setTimeout(() => {
+      burstResetTimers.delete(groupId);
+      groupSizeBeforeRemovalBurst.delete(groupId);
+    }, BURST_WINDOW_MS),
+  );
+}
+
+function consumeGroupSizeBeforeRemovalBurst(groupId: number): number | undefined {
+  const timer = burstResetTimers.get(groupId);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    burstResetTimers.delete(groupId);
+  }
+  const size = groupSizeBeforeRemovalBurst.get(groupId);
+  groupSizeBeforeRemovalBurst.delete(groupId);
+  return size;
+}
 
 async function seedGroupIdTracking(): Promise<void> {
   const tabs = await browser.tabs.query({});
@@ -149,6 +220,11 @@ export function registerLocalListeners(): void {
     void browser.tabs.get(tabId).then(scheduleForTab);
   });
   browser.tabs.onRemoved.addListener((tabId) => {
+    const previousGroupId = lastKnownGroupIdByTab.get(tabId);
+    if (previousGroupId !== undefined) {
+      noteTabLeavingGroup(previousGroupId, countTabsInGroup(previousGroupId));
+    }
+
     const { left } = resolveTabGroupChange(tabId, undefined, lastKnownGroupIdByTab);
 
     if (left !== undefined) {

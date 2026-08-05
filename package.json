@@ -1,22 +1,34 @@
 {
-  "name": "sync-tab-group",
-  "version": "0.1.0",
+  "name": "sync-tab-groups",
+  "version": "0.3.0",
   "description": "Synchronizes Firefox tab groups and their content across devices",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",
+    "build:extension": "rm -rf builds && bun web-ext:build && bun source:archive",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "web-ext:lint": "web-ext lint --source-dir dist",
+    "web-ext:run": "bun run build && web-ext run --source-dir dist",
+    "web-ext:build": "bun run build && web-ext lint --source-dir dist && web-ext build --source-dir dist --artifacts-dir builds --overwrite-dest",
+    "web-ext:sign": "bun --env-file=.env run web-ext:sign:command",
+    "web-ext:sign:command": "bun run build && web-ext sign --source-dir dist --artifacts-dir builds --channel listed --api-key=\"$WEB_EXT_API_KEY\" --api-secret=\"$WEB_EXT_API_SECRET\"",
+    "web-ext:sign:dev": "bun --env-file=.env run web-ext:sign:dev:command",
+    "web-ext:sign:dev:command": "bun run build && web-ext sign --source-dir dist --artifacts-dir builds --channel unlisted --approval-timeout 0 --api-key=\"$WEB_EXT_API_KEY\" --api-secret=\"$WEB_EXT_API_SECRET\"",
+    "source:archive": "bun run scripts/create-source-archive.ts"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/node": "^26.1.1",
     "@types/webextension-polyfill": "^0.12.5",
+    "archiver": "^8.0.0",
     "typescript": "^5.9.3",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "web-ext": "^10.5.0"
   },
   "dependencies": {
     "webextension-polyfill": "^0.12.0"

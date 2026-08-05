@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserMock } from '../setup';
-import { applyRemoteGroup, closeLocalGroup, type ReconcileAction } from '../../src/lib/reconciler';
+import { applyRemoteGroup, closeLocalGroup, localGroupExists, type ReconcileAction } from '../../src/lib/reconciler';
 import type { SyncedGroup } from '../../src/lib/model';
 
 beforeEach(() => {
@@ -26,6 +26,20 @@ describe('closeLocalGroup', () => {
     await closeLocalGroup(7);
 
     expect(browserMock.tabs.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('localGroupExists', () => {
+  it('returns true when the tabGroup can be fetched', async () => {
+    browserMock.tabGroups.get.mockResolvedValue({ id: 7, windowId: 1, title: '', color: 'grey', collapsed: false });
+
+    expect(await localGroupExists(7)).toBe(true);
+  });
+
+  it('returns false when the tabGroup no longer exists', async () => {
+    browserMock.tabGroups.get.mockRejectedValue(new Error('No group with id: 7'));
+
+    expect(await localGroupExists(7)).toBe(false);
   });
 });
 

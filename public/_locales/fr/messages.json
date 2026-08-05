@@ -1,0 +1,44 @@
+{
+  "extensionName": {
+    "message": "Sync Tab Groups"
+  },
+  "extensionDescription": {
+    "message": "Synchronise les groupes d'onglets et leur contenu entre devices"
+  },
+  "syncNowTitle": {
+    "message": "Synchroniser maintenant"
+  },
+  "sectionLocalGroups": {
+    "message": "Groupes locaux"
+  },
+  "sectionOpenGroups": {
+    "message": "Groupes synchronisés (ouverts ici)"
+  },
+  "sectionClosedGroups": {
+    "message": "Groupes synchronisés (fermés ici)"
+  },
+  "emptyLocalGroups": {
+    "message": "Aucun groupe local"
+  },
+  "emptyOpenGroups": {
+    "message": "Aucun groupe synchronisé ouvert"
+  },
+  "emptyClosedGroups": {
+    "message": "Aucun groupe synchronisé fermé"
+  },
+  "untitledGroup": {
+    "message": "(sans titre)"
+  },
+  "buttonShare": {
+    "message": "Partager"
+  },
+  "buttonClose": {
+    "message": "Fermer"
+  },
+  "buttonDelete": {
+    "message": "Supprimer"
+  },
+  "buttonOpen": {
+    "message": "Ouvrir"
+  }
+}

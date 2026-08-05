@@ -2,10 +2,16 @@ import browser from 'webextension-polyfill';
 import type { TabGroups } from 'webextension-polyfill';
 import { getDeviceId } from './deviceId';
 import { devLog } from './devLog';
-import { getAllMappedLocalGroupIds, getLocalGroupIdForSyncId, setMapping } from './localGroupMap';
+import {
+  getAllMappedLocalGroupIds,
+  getLocalGroupIdForSyncId,
+  removeMappingByLocalGroupId,
+  setMapping,
+} from './localGroupMap';
+import { markIntentionalClose } from './intentionalClose';
 import { readLocalGroupState } from './localState';
 import type { SyncedGroup } from './model';
-import { applyRemoteGroup, closeLocalGroup } from './reconciler';
+import { applyRemoteGroup, closeLocalGroup, localGroupExists } from './reconciler';
 import { setSnapshot } from './snapshot';
 import { getAllSyncedGroups, removeSyncedGroup, setSyncedGroup } from './syncStorage';
 
@@ -70,12 +76,31 @@ export async function listUnsharedLocalGroups(): Promise<LocalGroupInfo[]> {
   return infos;
 }
 
+/**
+ * Resolves the local mapping for a syncId and confirms the tabGroup it points to
+ * still actually exists in the browser. A mapping can go stale (browser crash, forced
+ * quit, service worker suspended mid-event) and be left pointing at a tabGroup that's
+ * gone, which would otherwise show the group as permanently "open" and stuck. Cleans
+ * up the orphaned mapping on detection so the popup self-heals on next render.
+ */
+async function resolveLocalGroupId(syncId: string): Promise<number | undefined> {
+  const localGroupId = await getLocalGroupIdForSyncId(syncId);
+  if (localGroupId === undefined) {
+    return undefined;
+  }
+  if (await localGroupExists(localGroupId)) {
+    return localGroupId;
+  }
+  await removeMappingByLocalGroupId(localGroupId);
+  return undefined;
+}
+
 export async function listSyncedGroups(): Promise<SyncedGroupInfo[]> {
   const [allSynced, order] = await Promise.all([getAllSyncedGroups(), getLocalGroupOrder()]);
   const infos: SyncedGroupInfo[] = [];
 
   for (const [syncId, group] of allSynced) {
-    const localGroupId = await getLocalGroupIdForSyncId(syncId);
+    const localGroupId = await resolveLocalGroupId(syncId);
     infos.push({ syncId, group, localGroupId });
   }
 
@@ -136,6 +161,16 @@ export async function openGroup(syncId: string, group: SyncedGroup): Promise<voi
 }
 
 export async function closeGroup(localGroupId: number): Promise<void> {
+  if (!(await localGroupExists(localGroupId))) {
+    // Mapping was already stale (tabGroups.onRemoved missed it): nothing to close,
+    // just drop the orphaned mapping so the group stops appearing stuck as "open".
+    await removeMappingByLocalGroupId(localGroupId);
+    return;
+  }
+  // Marks this as a deliberate whole-group close so the background tabGroups.onRemoved
+  // listener keeps the synced data (reopenable later) instead of treating it as the
+  // group having emptied out tab-by-tab, which deletes it from the sync.
+  await markIntentionalClose(localGroupId);
   await closeLocalGroup(localGroupId);
 }
 
@@ -154,7 +189,7 @@ export async function forceSyncNow(): Promise<void> {
   const allSynced = await getAllSyncedGroups();
 
   for (const [syncId, group] of allSynced) {
-    const localGroupId = await getLocalGroupIdForSyncId(syncId);
+    const localGroupId = await resolveLocalGroupId(syncId);
     if (localGroupId === undefined) {
       continue;
     }

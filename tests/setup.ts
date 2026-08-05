@@ -79,6 +79,10 @@ export const browserMock = {
   management: {
     getSelf: vi.fn(),
   },
+  i18n: {
+    getMessage: vi.fn((key: string) => key),
+    getUILanguage: vi.fn(() => 'fr'),
+  },
 };
 
 vi.mock('webextension-polyfill', () => ({ default: browserMock }));
