@@ -40,5 +40,14 @@
   },
   "buttonOpen": {
     "message": "Open"
+  },
+  "renameTabTitle": {
+    "message": "Rename tab"
+  },
+  "resetTabTitleTitle": {
+    "message": "Reset title"
+  },
+  "renameTabPrompt": {
+    "message": "New title for this tab:"
   }
 }

@@ -60,10 +60,33 @@ export const browserMock = {
     group: vi.fn(),
     ungroup: vi.fn(),
     get: vi.fn(),
+    reload: vi.fn(),
     onCreated: { addListener: vi.fn() },
     onUpdated: { addListener: vi.fn() },
     onMoved: { addListener: vi.fn() },
     onRemoved: { addListener: vi.fn() },
+  },
+  contextMenus: {
+    create: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+    removeAll: vi.fn(),
+    refresh: vi.fn(),
+    onClicked: { addListener: vi.fn() },
+    onShown: { addListener: vi.fn() },
+    onHidden: { addListener: vi.fn() },
+  },
+  sessions: {
+    setTabValue: vi.fn(),
+    getTabValue: vi.fn(),
+    removeTabValue: vi.fn(),
+  },
+  scripting: {
+    executeScript: vi.fn(),
+  },
+  runtime: {
+    sendMessage: vi.fn(),
+    onMessage: { addListener: vi.fn() },
   },
   tabGroups: {
     get: vi.fn(),
