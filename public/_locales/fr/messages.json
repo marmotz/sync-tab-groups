@@ -49,5 +49,11 @@
   },
   "renameTabPrompt": {
     "message": "Nouveau titre pour cet onglet :"
+  },
+  "buttonRename": {
+    "message": "Renommer"
+  },
+  "buttonCancel": {
+    "message": "Annuler"
   }
 }

@@ -1,0 +1,96 @@
+:root {
+  color-scheme: light dark;
+
+  --bg: #f7f7f9;
+  --surface: #ffffff;
+  --border: #e6e6ea;
+  --text: #1c1c1f;
+  --text-muted: #7a7a82;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-contrast: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1e;
+    --surface: #232328;
+    --border: #34343b;
+    --text: #f0f0f2;
+    --text-muted: #96969e;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-contrast: #1a1a1e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+label {
+  color: var(--text-muted);
+}
+
+input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+button {
+  font: inherit;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+#cancel-button {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+#cancel-button:hover {
+  color: var(--text);
+}
+
+#confirm-button {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+#confirm-button:hover {
+  background: var(--accent-hover);
+}

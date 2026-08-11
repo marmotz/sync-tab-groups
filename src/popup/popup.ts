@@ -194,6 +194,11 @@ browser.storage.onChanged.addListener(() => {
   scheduleRender();
 });
 
+const brandVersion = document.getElementById('brand-version');
+if (brandVersion !== null) {
+  brandVersion.textContent = `v${browser.runtime.getManifest().version}`;
+}
+
 const syncNowButton = document.getElementById('sync-now');
 if (syncNowButton instanceof HTMLButtonElement) {
   syncNowButton.title = t('syncNowTitle');

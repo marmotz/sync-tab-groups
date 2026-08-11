@@ -1,9 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserMock } from '../setup';
-import { applyCustomTitle, clearCustomTitle, getCustomTitle, setCustomTitle } from '../../src/lib/tabTitle';
+import {
+  applyCustomTitle,
+  clearCustomTitle,
+  getCustomTitle,
+  isTabRenamable,
+  setCustomTitle,
+} from '../../src/lib/tabTitle';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // isTabRenamable() devLog()s on failure, which calls management.getSelf(): give it a
+  // resolved value so that doesn't produce unhandled rejections unrelated to these tests.
+  browserMock.management.getSelf.mockResolvedValue({ installType: 'normal' });
 });
 
 describe('getCustomTitle', () => {
@@ -43,5 +52,45 @@ describe('applyCustomTitle', () => {
   it('silently ignores tabs that cannot be scripted', async () => {
     browserMock.scripting.executeScript.mockRejectedValue(new Error('Cannot access a privileged page'));
     await expect(applyCustomTitle(1, 'My tab')).resolves.toBeUndefined();
+  });
+});
+
+describe('isTabRenamable', () => {
+  it('returns true when a loaded tab can be scripted', async () => {
+    browserMock.scripting.executeScript.mockResolvedValue([{ frameId: 0, result: true }]);
+    expect(await isTabRenamable({ id: 1, url: 'https://example.com', discarded: false })).toBe(true);
+  });
+
+  it('returns false for a loaded page whose script injection is rejected (e.g. a quarantined https domain)', async () => {
+    browserMock.scripting.executeScript.mockRejectedValue(new Error('Cannot access a privileged page'));
+    expect(await isTabRenamable({ id: 1, url: 'https://addons.mozilla.org', discarded: false })).toBe(false);
+  });
+
+  it('returns false for a known privileged URL without even probing it', async () => {
+    // Some internal pages (about:debugging in particular) don't actually reject
+    // scripting.executeScript, so the URL check has to be authoritative and short-circuit
+    // before the probe, not just act as a shortcut for the common case.
+    expect(await isTabRenamable({ id: 1, url: 'about:debugging#/runtime/this-firefox', discarded: false })).toBe(
+      false,
+    );
+    expect(browserMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('returns false when the tab has no id', async () => {
+    expect(await isTabRenamable({ id: undefined, url: 'https://example.com', discarded: false })).toBe(false);
+    expect(browserMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  describe('discarded tabs (restored at startup or unloaded to save memory)', () => {
+    it('treats an ordinary http(s) page as renamable without probing it (no live document to inject into)', async () => {
+      const result = await isTabRenamable({ id: 1, url: 'https://example.com', discarded: true });
+      expect(result).toBe(true);
+      expect(browserMock.scripting.executeScript).not.toHaveBeenCalled();
+    });
+
+    it('treats a privileged page as non-renamable based on its URL alone', async () => {
+      expect(await isTabRenamable({ id: 1, url: 'about:addons', discarded: true })).toBe(false);
+      expect(await isTabRenamable({ id: 1, url: undefined, discarded: true })).toBe(false);
+    });
   });
 });

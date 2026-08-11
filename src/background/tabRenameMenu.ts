@@ -1,43 +1,57 @@
 import browser from 'webextension-polyfill';
 import type { Runtime, Tabs } from 'webextension-polyfill';
-import { t } from '../lib/i18n';
 import { GET_CUSTOM_TITLE_MESSAGE } from '../lib/messages';
-import { applyCustomTitle, clearCustomTitle, getCustomTitle, setCustomTitle } from '../lib/tabTitle';
+import { applyCustomTitle, clearCustomTitle, getCustomTitle, isTabRenamable } from '../lib/tabTitle';
+import { t } from '../lib/i18n';
 
 const RENAME_MENU_ID = 'renameTab';
 const RESET_MENU_ID = 'resetTabTitle';
 
-async function promptForNewTitle(tab: Tabs.Tab): Promise<string | null> {
-  if (tab.id === undefined) {
-    return null;
+// browser.windows.create() without left/top defaults to the primary display, not the one
+// the source window is on. On a multi-monitor setup this makes the popup appear on the
+// "wrong" screen whenever the browser itself is on a secondary one. Centering it over the
+// source window's own bounds keeps it on the same display.
+async function computePopupPosition(
+  windowId: number | undefined,
+  width: number,
+  height: number,
+): Promise<{ left: number; top: number } | Record<string, never>> {
+  if (windowId === undefined) {
+    return {};
   }
 
-  try {
-    const results = await browser.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: (promptLabel: string, current: string) => window.prompt(promptLabel, current),
-      args: [t('renameTabPrompt'), tab.title ?? ''],
-    });
-    const value = results[0]?.result;
-    return typeof value === 'string' ? value : null;
-  } catch {
-    return null;
+  const sourceWindow = await browser.windows.get(windowId);
+  if (
+    sourceWindow.left === undefined ||
+    sourceWindow.top === undefined ||
+    sourceWindow.width === undefined ||
+    sourceWindow.height === undefined
+  ) {
+    return {};
   }
+
+  return {
+    left: Math.round(sourceWindow.left + (sourceWindow.width - width) / 2),
+    top: Math.round(sourceWindow.top + (sourceWindow.height - height) / 2),
+  };
 }
 
+// A window.prompt() injected into the clicked tab's page renders on *that* tab, invisible
+// if it isn't the active one. A dedicated extension window sidesteps this entirely: it's
+// its own top-level window, shown regardless of which tab/window currently has focus, and
+// works without ever needing to activate the target tab.
 async function handleRename(tab: Tabs.Tab): Promise<void> {
   if (tab.id === undefined) {
     return;
   }
 
-  const newTitle = await promptForNewTitle(tab);
-  if (newTitle === null || newTitle.trim() === '') {
-    return;
-  }
-
-  const trimmed = newTitle.trim();
-  await setCustomTitle(tab.id, trimmed);
-  await applyCustomTitle(tab.id, trimmed);
+  const url = browser.runtime.getURL(
+    `renameTab/index.html?tabId=${tab.id}&title=${encodeURIComponent(tab.title ?? '')}`,
+  );
+  const width = 420;
+  const height = 160;
+  const position = await computePopupPosition(tab.windowId, width, height);
+  await browser.windows.create({ url, type: 'popup', width, height, ...position });
 }
 
 async function handleReset(tab: Tabs.Tab): Promise<void> {
@@ -51,20 +65,28 @@ async function handleReset(tab: Tabs.Tab): Promise<void> {
   await browser.tabs.reload(tab.id);
 }
 
-async function updateResetVisibility(tabId: number): Promise<void> {
-  const custom = await getCustomTitle(tabId);
-  await browser.contextMenus.update(RESET_MENU_ID, { visible: custom !== undefined });
+async function updateMenuVisibility(tab: Tabs.Tab): Promise<void> {
+  if (tab.id === undefined) {
+    return;
+  }
+
+  const renamable = await isTabRenamable(tab);
+  const custom = renamable ? await getCustomTitle(tab.id) : undefined;
+  await browser.contextMenus.update(RENAME_MENU_ID, { visible: renamable });
+  await browser.contextMenus.update(RESET_MENU_ID, { visible: renamable && custom !== undefined });
   await browser.contextMenus.refresh();
 }
 
 // Covers background script restarts (event page/service worker reload): tabs that are
 // already loaded won't run the content script again on their own, so it has to be pushed
 // to them once here. Fresh navigations afterwards are handled by the content script
-// asking via GET_CUSTOM_TITLE_MESSAGE instead.
+// asking via GET_CUSTOM_TITLE_MESSAGE instead. Discarded tabs are skipped: they have no
+// live document to inject into yet, and will pick up their title through the content
+// script once actually loaded.
 async function reapplyAllOpenTabs(): Promise<void> {
   const tabs = await browser.tabs.query({});
   for (const tab of tabs) {
-    if (tab.id === undefined) {
+    if (tab.id === undefined || tab.discarded === true) {
       continue;
     }
     const custom = await getCustomTitle(tab.id);
@@ -88,10 +110,10 @@ export function registerTabRenameMenu(): void {
   });
 
   browser.contextMenus.onShown.addListener((info, tab) => {
-    if (!info.contexts.includes('tab') || tab.id === undefined) {
+    if (!info.contexts.includes('tab')) {
       return;
     }
-    void updateResetVisibility(tab.id);
+    void updateMenuVisibility(tab);
   });
 
   browser.contextMenus.onClicked.addListener((info, tab) => {

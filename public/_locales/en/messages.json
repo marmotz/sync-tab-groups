@@ -49,5 +49,11 @@
   },
   "renameTabPrompt": {
     "message": "New title for this tab:"
+  },
+  "buttonRename": {
+    "message": "Rename"
+  },
+  "buttonCancel": {
+    "message": "Cancel"
   }
 }

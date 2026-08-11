@@ -20,6 +20,9 @@ function flush(): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks();
   browserMock.tabs.query.mockResolvedValue([]);
+  // isTabRenamable() devLog()s on failure, which calls management.getSelf(): give it a
+  // resolved value so that doesn't produce unhandled rejections unrelated to these tests.
+  browserMock.management.getSelf.mockResolvedValue({ installType: 'normal' });
 });
 
 describe('registerTabRenameMenu', () => {
@@ -50,33 +53,53 @@ describe('registerTabRenameMenu', () => {
 });
 
 describe('onClicked - rename', () => {
-  it('prompts for a title, stores it and applies it to the tab', async () => {
+  it('opens a dedicated extension window for the clicked tab, carrying its id and current title', async () => {
+    browserMock.windows.get.mockResolvedValue({});
+
     registerTabRenameMenu();
     const onClicked = getListener(browserMock.contextMenus.onClicked);
 
-    browserMock.scripting.executeScript
-      .mockResolvedValueOnce([{ frameId: 0, result: 'New name' }]) // prompt()
-      .mockResolvedValueOnce([{ frameId: 0 }]); // document.title assignment
-
-    await onClicked({ menuItemId: 'renameTab' }, { id: 5, title: 'Original' });
+    await onClicked({ menuItemId: 'renameTab' }, { id: 5, title: 'Original title' });
     await flush();
 
-    expect(browserMock.sessions.setTabValue).toHaveBeenCalledWith(5, 'customTitle', 'New name');
-    expect(browserMock.scripting.executeScript).toHaveBeenLastCalledWith(
-      expect.objectContaining({ target: { tabId: 5 }, args: ['New name'] }),
+    expect(browserMock.windows.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'popup',
+        url: `renameTab/index.html?tabId=5&title=${encodeURIComponent('Original title')}`,
+      }),
     );
   });
 
-  it('does nothing when the prompt is cancelled', async () => {
+  it('centers the popup over the source window bounds when known', async () => {
+    browserMock.windows.get.mockResolvedValue({ left: 2000, top: 100, width: 1600, height: 900 });
+
     registerTabRenameMenu();
     const onClicked = getListener(browserMock.contextMenus.onClicked);
 
-    browserMock.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, result: null }]);
-
-    await onClicked({ menuItemId: 'renameTab' }, { id: 5, title: 'Original' });
+    await onClicked({ menuItemId: 'renameTab' }, { id: 5, title: 'Original title', windowId: 7 });
     await flush();
 
-    expect(browserMock.sessions.setTabValue).not.toHaveBeenCalled();
+    expect(browserMock.windows.get).toHaveBeenCalledWith(7);
+    expect(browserMock.windows.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        left: 2000 + (1600 - 420) / 2,
+        top: 100 + (900 - 160) / 2,
+      }),
+    );
+  });
+
+  it('falls back to no explicit position when the source window bounds are unknown', async () => {
+    browserMock.windows.get.mockResolvedValue({});
+
+    registerTabRenameMenu();
+    const onClicked = getListener(browserMock.contextMenus.onClicked);
+
+    await onClicked({ menuItemId: 'renameTab' }, { id: 5, title: 'Original title', windowId: 7 });
+    await flush();
+
+    const call = browserMock.windows.create.mock.calls[0]?.[0];
+    expect(call).not.toHaveProperty('left');
+    expect(call).not.toHaveProperty('top');
   });
 });
 
@@ -94,27 +117,73 @@ describe('onClicked - reset', () => {
 });
 
 describe('onShown', () => {
-  it('shows the reset entry only when the tab has a custom title', async () => {
+  it('shows both entries on a renamable tab that already has a custom title', async () => {
     registerTabRenameMenu();
     const onShown = getListener(browserMock.contextMenus.onShown);
 
+    browserMock.scripting.executeScript.mockResolvedValue([{ frameId: 0, result: true }]);
     browserMock.sessions.getTabValue.mockResolvedValue('Renamed');
-    await onShown({ contexts: ['tab'] }, { id: 5 });
+
+    await onShown({ contexts: ['tab'] }, { id: 5, url: 'https://example.com' });
     await flush();
 
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('renameTab', { visible: true });
     expect(browserMock.contextMenus.update).toHaveBeenCalledWith('resetTabTitle', { visible: true });
     expect(browserMock.contextMenus.refresh).toHaveBeenCalled();
   });
 
-  it('hides the reset entry when the tab has no custom title', async () => {
+  it('shows rename but hides reset on a renamable tab with no custom title', async () => {
+    registerTabRenameMenu();
+    const onShown = getListener(browserMock.contextMenus.onShown);
+
+    browserMock.scripting.executeScript.mockResolvedValue([{ frameId: 0, result: true }]);
+    browserMock.sessions.getTabValue.mockResolvedValue(undefined);
+
+    await onShown({ contexts: ['tab'] }, { id: 5, url: 'https://example.com' });
+    await flush();
+
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('renameTab', { visible: true });
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('resetTabTitle', { visible: false });
+  });
+
+  it('hides both entries on a page whose script injection is rejected', async () => {
+    registerTabRenameMenu();
+    const onShown = getListener(browserMock.contextMenus.onShown);
+
+    browserMock.scripting.executeScript.mockRejectedValue(new Error('Cannot access a privileged page'));
+
+    await onShown({ contexts: ['tab'] }, { id: 5, url: 'https://addons.mozilla.org' });
+    await flush();
+
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('renameTab', { visible: false });
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('resetTabTitle', { visible: false });
+    // No point looking up a stored title for a tab that was never renamable in the first place.
+    expect(browserMock.sessions.getTabValue).not.toHaveBeenCalled();
+  });
+
+  it('hides both entries on a known privileged URL (e.g. about:debugging) without probing it', async () => {
+    registerTabRenameMenu();
+    const onShown = getListener(browserMock.contextMenus.onShown);
+
+    await onShown({ contexts: ['tab'] }, { id: 5, url: 'about:debugging#/runtime/this-firefox' });
+    await flush();
+
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('renameTab', { visible: false });
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('resetTabTitle', { visible: false });
+    expect(browserMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('treats a discarded ordinary page as renamable without probing it', async () => {
     registerTabRenameMenu();
     const onShown = getListener(browserMock.contextMenus.onShown);
 
     browserMock.sessions.getTabValue.mockResolvedValue(undefined);
-    await onShown({ contexts: ['tab'] }, { id: 5 });
+
+    await onShown({ contexts: ['tab'] }, { id: 5, url: 'https://example.com', discarded: true });
     await flush();
 
-    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('resetTabTitle', { visible: false });
+    expect(browserMock.contextMenus.update).toHaveBeenCalledWith('renameTab', { visible: true });
+    expect(browserMock.scripting.executeScript).not.toHaveBeenCalled();
   });
 });
 

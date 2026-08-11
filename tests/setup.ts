@@ -87,6 +87,7 @@ export const browserMock = {
   runtime: {
     sendMessage: vi.fn(),
     onMessage: { addListener: vi.fn() },
+    getURL: vi.fn((path: string) => path),
   },
   tabGroups: {
     get: vi.fn(),
@@ -98,6 +99,8 @@ export const browserMock = {
   },
   windows: {
     getCurrent: vi.fn(),
+    get: vi.fn(),
+    create: vi.fn(),
   },
   management: {
     getSelf: vi.fn(),
