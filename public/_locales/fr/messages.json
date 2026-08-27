@@ -55,5 +55,31 @@
   },
   "buttonCancel": {
     "message": "Annuler"
+  },
+  "mergeConflictHeading": {
+    "message": "Un groupe nommé « $NAME$ » existe déjà.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mergePickLocalHeading": {
+    "message": "Fusionner avec quel groupe local ?"
+  },
+  "mergeChoiceRenameLocal": {
+    "message": "Renommer le groupe local"
+  },
+  "mergeChoiceKeepLocal": {
+    "message": "Garder mes onglets locaux"
+  },
+  "mergeChoiceKeepCloud": {
+    "message": "Garder les onglets du cloud"
+  },
+  "mergeChoiceMerge": {
+    "message": "Fusionner"
+  },
+  "localGroupSuffix": {
+    "message": "local"
   }
 }

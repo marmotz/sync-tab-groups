@@ -234,6 +234,24 @@ h1 {
   color: var(--accent-contrast);
 }
 
+.conflict-choice {
+  padding: 8px 10px 10px;
+  margin: -2px 0 6px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.conflict-choice p {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.conflict-choice .group-actions {
+  flex-wrap: wrap;
+}
+
 .empty {
   color: var(--text-muted);
   padding: 10px;

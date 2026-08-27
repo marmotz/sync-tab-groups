@@ -11,7 +11,8 @@ import {
 import { markIntentionalClose } from './intentionalClose';
 import { readLocalGroupState } from './localState';
 import type { SyncedGroup } from './model';
-import { applyRemoteGroup, closeLocalGroup, localGroupExists } from './reconciler';
+import { applyRemoteGroup, closeLocalGroup, computeMergeAdditions, localGroupExists } from './reconciler';
+import { t } from './i18n';
 import { setSnapshot } from './snapshot';
 import { getAllSyncedGroups, removeSyncedGroup, setSyncedGroup } from './syncStorage';
 
@@ -74,6 +75,24 @@ export async function listUnsharedLocalGroups(): Promise<LocalGroupInfo[]> {
   infos.sort((a, b) => (order.get(a.localGroupId) ?? 0) - (order.get(b.localGroupId) ?? 0));
 
   return infos;
+}
+
+/**
+ * Canonical form for comparing group titles: case- and surrounding-whitespace-insensitive.
+ * Deliberately does not touch accents or inner spacing (fuzzy matching is out of scope).
+ */
+export function normalizeGroupTitle(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+/**
+ * Local groups (not yet synced) whose title collides with `title` once normalized,
+ * in the same display order as `listUnsharedLocalGroups`.
+ */
+export async function findLocalNameConflicts(title: string): Promise<LocalGroupInfo[]> {
+  const target = normalizeGroupTitle(title);
+  const locals = await listUnsharedLocalGroups();
+  return locals.filter((info) => normalizeGroupTitle(info.title) === target);
 }
 
 /**
@@ -158,6 +177,104 @@ export async function openGroup(syncId: string, group: SyncedGroup): Promise<voi
   await setSnapshot(syncId, group);
 
   devLog(`Groupe "${group.title}" ouvert sur ce device`);
+}
+
+/**
+ * Shared closing step for every "same-name" reconciliation primitive: re-reads the local
+ * group state *after* its tabs were mutated, then links it to the existing syncId and
+ * pushes that final state to both the cloud and the local snapshot.
+ */
+async function linkAndPush(syncId: string, localGroupId: number): Promise<SyncedGroup> {
+  const deviceId = await getDeviceId();
+  const state = await readLocalGroupState(localGroupId, syncId, deviceId);
+
+  await setMapping(localGroupId, syncId);
+  await setSyncedGroup(state);
+  await setSnapshot(syncId, state);
+
+  return state;
+}
+
+/**
+ * "Keep my local tabs": the local group already holds the wanted state, just adopt it under
+ * the existing syncId and push it up.
+ */
+export async function adoptLocalOverSynced(syncId: string, localGroupId: number): Promise<void> {
+  const state = await linkAndPush(syncId, localGroupId);
+  devLog(`Groupe "${state.title}" : onglets locaux conservés → cloud`);
+}
+
+/**
+ * "Keep the cloud tabs": align the local group on the remote content (may close local
+ * tabs), then link and push.
+ */
+export async function adoptSyncedOverLocal(
+  syncId: string,
+  localGroupId: number,
+  group: SyncedGroup,
+): Promise<void> {
+  await applyRemoteGroup(localGroupId, group);
+  const state = await linkAndPush(syncId, localGroupId);
+  devLog(`Groupe "${state.title}" : onglets du cloud conservés → local`);
+}
+
+/**
+ * "Merge": append every remote tab not already open locally to the end of the local
+ * group (local tabs first, then remote), then link and push.
+ */
+export async function mergeLocalAndSynced(
+  syncId: string,
+  localGroupId: number,
+  group: SyncedGroup,
+): Promise<void> {
+  const tabGroup = await browser.tabGroups.get(localGroupId);
+  const localTabs = await browser.tabs.query({ groupId: localGroupId });
+  const localUrls = localTabs.map((tab) => tab.url ?? '');
+
+  const additions = computeMergeAdditions(localUrls, group.tabs);
+  const createdIds: number[] = [];
+  for (const tab of additions) {
+    const created = await browser.tabs.create({ url: tab.url, windowId: tabGroup.windowId, active: false });
+    if (created.id !== undefined) {
+      createdIds.push(created.id);
+    }
+  }
+  if (createdIds.length > 0) {
+    await browser.tabs.group({ tabIds: createdIds, groupId: localGroupId });
+  }
+
+  const state = await linkAndPush(syncId, localGroupId);
+  devLog(`Groupe "${state.title}" : ${additions.length} onglet(s) distant(s) ajouté(s) → fusion`);
+}
+
+/**
+ * Renames a local group so it no longer collides with `baseTitle`: picks the first free
+ * title among "<base> (local)", "<base> (local 2)", … that clashes (normalized) with no
+ * browser tab group and no synced group.
+ */
+export async function renameLocalGroupToAvoidConflict(localGroupId: number, baseTitle: string): Promise<void> {
+  const suffix = t('localGroupSuffix');
+  const [allGroups, allSynced] = await Promise.all([browser.tabGroups.query({}), getAllSyncedGroups()]);
+
+  const taken = new Set<string>();
+  for (const group of allGroups) {
+    if (group.id !== localGroupId) {
+      taken.add(normalizeGroupTitle(group.title ?? ''));
+    }
+  }
+  for (const [, group] of allSynced) {
+    taken.add(normalizeGroupTitle(group.title));
+  }
+
+  let candidate = `${baseTitle} (${suffix})`;
+  let counter = 2;
+  while (taken.has(normalizeGroupTitle(candidate))) {
+    candidate = `${baseTitle} (${suffix} ${counter})`;
+    counter += 1;
+  }
+
+  await browser.tabGroups.update(localGroupId, { title: candidate });
+  devLog(`Groupe local renommé en "${candidate}" pour éviter la collision`);
 }
 
 export async function closeGroup(localGroupId: number): Promise<void> {

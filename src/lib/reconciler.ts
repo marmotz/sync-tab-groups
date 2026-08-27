@@ -48,6 +48,16 @@ export function computeReconcileActions(localTabs: LocalTabRef[], remoteTabs: Sy
   return actions;
 }
 
+/**
+ * Pure diff for merging (never deletes): returns the remote tabs whose URL is not
+ * already present locally, keeping the remote relative order. Used when two same-named
+ * groups are combined and every local tab must be preserved.
+ */
+export function computeMergeAdditions(localUrls: string[], remoteTabs: SyncedTab[]): SyncedTab[] {
+  const present = new Set(localUrls);
+  return remoteTabs.filter((tab) => !present.has(tab.url));
+}
+
 export async function applyRemoteGroup(
   localGroupId: number,
   remoteGroup: SyncedGroup,
@@ -63,6 +73,27 @@ export async function applyRemoteGroup(
   const actions = computeReconcileActions(localRefs, remoteGroup.tabs);
   actions.forEach((action) => onAction?.(action));
 
+  // Create (and group) the incoming tabs *before* removing the obsolete local ones.
+  // If every current local tab is obsolete (e.g. the remote content diverged completely
+  // after a "keep my tabs" merge on another device), removing first would empty the group
+  // and the browser would destroy it mid-reconcile, dropping the new tabs on the floor.
+  const tabIdByGroupIndex = new Map<number, number>();
+  for (const action of actions) {
+    if (action.type === 'createTab') {
+      const created = await browser.tabs.create({
+        url: action.url,
+        windowId: tabGroup.windowId,
+        active: false,
+      });
+      if (created.id !== undefined) {
+        await browser.tabs.group({ tabIds: created.id, groupId: localGroupId });
+        tabIdByGroupIndex.set(action.groupIndex, created.id);
+      }
+    } else if (action.type === 'moveTab') {
+      tabIdByGroupIndex.set(action.groupIndex, action.tabId);
+    }
+  }
+
   for (const action of actions) {
     if (action.type === 'removeTab') {
       await browser.tabs.remove(action.tabId);
@@ -75,24 +106,8 @@ export async function applyRemoteGroup(
       ? Math.min(...remainingTabs.map((tab) => tab.index ?? 0))
       : (await browser.tabs.query({ windowId: tabGroup.windowId })).length;
 
-  for (const action of actions) {
-    if (action.type === 'createTab') {
-      const created = await browser.tabs.create({
-        url: action.url,
-        windowId: tabGroup.windowId,
-        index: baseIndex + action.groupIndex,
-        active: false,
-      });
-      if (created.id !== undefined) {
-        await browser.tabs.group({ tabIds: created.id, groupId: localGroupId });
-      }
-    }
-  }
-
-  for (const action of actions) {
-    if (action.type === 'moveTab') {
-      await browser.tabs.move(action.tabId, { index: baseIndex + action.groupIndex });
-    }
+  for (const [groupIndex, tabId] of [...tabIdByGroupIndex.entries()].sort((a, b) => a[0] - b[0])) {
+    await browser.tabs.move(tabId, { index: baseIndex + groupIndex });
   }
 
   await browser.tabGroups.update(localGroupId, {

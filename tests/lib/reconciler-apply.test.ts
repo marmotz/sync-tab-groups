@@ -86,6 +86,45 @@ describe('applyRemoteGroup', () => {
     });
   });
 
+  it('creates and groups the incoming tabs before removing the obsolete ones so the group is never emptied', async () => {
+    const remoteGroup: SyncedGroup = {
+      id: 'sync-1',
+      title: 'test',
+      color: 'blue',
+      collapsed: false,
+      tabs: [{ url: 'https://from-other-device.example', title: 'Other', index: 0 }],
+      updatedAt: 2,
+      updatedBy: 'device-2',
+    };
+
+    browserMock.tabGroups.get.mockResolvedValue({ id: 7, windowId: 1, title: 'test', color: 'blue', collapsed: false });
+    browserMock.tabs.query
+      .mockResolvedValueOnce([
+        { id: 1, index: 0, url: 'https://a.example' },
+        { id: 2, index: 1, url: 'https://b.example' },
+      ])
+      .mockResolvedValueOnce([{ id: 3, index: 2, url: 'https://from-other-device.example' }]);
+    browserMock.tabs.create.mockResolvedValue({ id: 3 });
+
+    const order: string[] = [];
+    browserMock.tabs.create.mockImplementation(async () => {
+      order.push('create');
+      return { id: 3 };
+    });
+    browserMock.tabs.group.mockImplementation(async () => {
+      order.push('group');
+      return 7;
+    });
+    browserMock.tabs.remove.mockImplementation(async () => {
+      order.push('remove');
+    });
+
+    await applyRemoteGroup(7, remoteGroup);
+
+    expect(order).toEqual(['create', 'group', 'remove', 'remove']);
+    expect(browserMock.tabs.group).toHaveBeenCalledWith({ tabIds: 3, groupId: 7 });
+  });
+
   it('works without an onAction callback', async () => {
     const remoteGroup: SyncedGroup = {
       id: 'sync-1',

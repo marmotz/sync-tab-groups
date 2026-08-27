@@ -55,5 +55,31 @@
   },
   "buttonCancel": {
     "message": "Cancel"
+  },
+  "mergeConflictHeading": {
+    "message": "A group named “$NAME$” already exists.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mergePickLocalHeading": {
+    "message": "Merge with which local group?"
+  },
+  "mergeChoiceRenameLocal": {
+    "message": "Rename the local group"
+  },
+  "mergeChoiceKeepLocal": {
+    "message": "Keep my local tabs"
+  },
+  "mergeChoiceKeepCloud": {
+    "message": "Keep the cloud tabs"
+  },
+  "mergeChoiceMerge": {
+    "message": "Merge"
+  },
+  "localGroupSuffix": {
+    "message": "local"
   }
 }

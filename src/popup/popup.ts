@@ -2,6 +2,7 @@ import browser from 'webextension-polyfill';
 import {
   closeGroup,
   deleteGroupEverywhere,
+  findLocalNameConflicts,
   forceSyncNow,
   listSyncedGroups,
   listUnsharedLocalGroups,
@@ -10,6 +11,7 @@ import {
   type LocalGroupInfo,
   type SyncedGroupInfo,
 } from '../lib/groupActions';
+import { runMergeChoice, type MergeChoice } from './conflictChoice';
 import { t } from '../lib/i18n';
 
 const appElement = document.getElementById('app');
@@ -166,6 +168,67 @@ function renderOpenSection(groups: SyncedGroupInfo[]): HTMLElement {
   return el;
 }
 
+// Expanded same-name conflict area under a closed group's row. Held at module scope so
+// it survives the full-DOM rerenders triggered by scheduleRender.
+let expandedConflict: { syncId: string; conflicts: LocalGroupInfo[] } | null = null;
+let conflictTarget: number | null = null;
+
+function closeConflictArea(): void {
+  expandedConflict = null;
+  conflictTarget = null;
+  scheduleRender();
+}
+
+function renderConflictChoice(info: SyncedGroupInfo, conflicts: LocalGroupInfo[]): HTMLElement {
+  const area = document.createElement('div');
+  area.className = 'conflict-choice';
+
+  const needsPick = conflicts.length > 1 && conflictTarget === null;
+
+  if (needsPick) {
+    const heading = document.createElement('p');
+    heading.textContent = t('mergePickLocalHeading');
+    area.appendChild(heading);
+
+    const actions = document.createElement('div');
+    actions.className = 'group-actions';
+    for (const conflict of conflicts) {
+      actions.appendChild(
+        makeButton(`${conflict.title || t('untitledGroup')} (${conflict.tabCount})`, () => {
+          conflictTarget = conflict.localGroupId;
+          scheduleRender();
+        }),
+      );
+    }
+    area.appendChild(actions);
+    return area;
+  }
+
+  const target = conflictTarget ?? conflicts[0]?.localGroupId;
+  if (target === undefined) {
+    return area;
+  }
+
+  const heading = document.createElement('p');
+  heading.textContent = t('mergeConflictHeading', [info.group.title]);
+  area.appendChild(heading);
+
+  const choose = (choice: MergeChoice): void => {
+    void runMergeChoice(choice, info, target).then(closeConflictArea);
+  };
+
+  const actions = document.createElement('div');
+  actions.className = 'group-actions';
+  actions.appendChild(makeButton(t('mergeChoiceRenameLocal'), () => choose('renameLocal')));
+  actions.appendChild(makeButton(t('mergeChoiceKeepLocal'), () => choose('keepLocal')));
+  actions.appendChild(makeButton(t('mergeChoiceKeepCloud'), () => choose('keepCloud')));
+  actions.appendChild(makeButton(t('mergeChoiceMerge'), () => choose('merge')));
+  actions.appendChild(makeButton(t('buttonCancel'), closeConflictArea, 'danger'));
+  area.appendChild(actions);
+
+  return area;
+}
+
 function renderClosedSection(groups: SyncedGroupInfo[]): HTMLElement {
   const el = section(t('sectionClosedGroups'));
   if (groups.length === 0) {
@@ -175,7 +238,15 @@ function renderClosedSection(groups: SyncedGroupInfo[]): HTMLElement {
 
   for (const info of groups) {
     const openBtn = makeButton(t('buttonOpen'), () => {
-      void openGroup(info.syncId, info.group).then(scheduleRender);
+      void findLocalNameConflicts(info.group.title).then((conflicts) => {
+        if (conflicts.length === 0) {
+          void openGroup(info.syncId, info.group).then(scheduleRender);
+          return;
+        }
+        expandedConflict = { syncId: info.syncId, conflicts };
+        conflictTarget = null;
+        scheduleRender();
+      });
     });
     const deleteBtn = makeButton(
       t('buttonDelete'),
@@ -185,6 +256,10 @@ function renderClosedSection(groups: SyncedGroupInfo[]): HTMLElement {
       'danger',
     );
     el.appendChild(groupRow(info.group.color, info.group.title, info.group.tabs.length, [openBtn, deleteBtn]));
+
+    if (expandedConflict?.syncId === info.syncId) {
+      el.appendChild(renderConflictChoice(info, expandedConflict.conflicts));
+    }
   }
 
   return el;

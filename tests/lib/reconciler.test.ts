@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeReconcileActions, type LocalTabRef } from '../../src/lib/reconciler';
+import { computeMergeAdditions, computeReconcileActions, type LocalTabRef } from '../../src/lib/reconciler';
 import type { SyncedTab } from '../../src/lib/model';
 
 function tab(url: string, index: number, title = url): SyncedTab {
@@ -82,6 +82,41 @@ describe('computeReconcileActions', () => {
     expect(actions).toEqual([
       { type: 'moveTab', tabId: 1, groupIndex: 0 },
       { type: 'moveTab', tabId: 2, groupIndex: 1 },
+    ]);
+  });
+});
+
+describe('computeMergeAdditions', () => {
+  it('returns nothing when every remote tab is already local', () => {
+    const remote = [tab('https://a.example', 0), tab('https://b.example', 1)];
+
+    expect(computeMergeAdditions(['https://a.example', 'https://b.example'], remote)).toEqual([]);
+  });
+
+  it('returns every remote tab when there is no overlap', () => {
+    const remote = [tab('https://a.example', 0), tab('https://b.example', 1)];
+
+    expect(computeMergeAdditions(['https://c.example'], remote)).toEqual(remote);
+  });
+
+  it('dedups on exact URL only and keeps remote order', () => {
+    const remote = [
+      tab('https://a.example', 0),
+      tab('https://b.example', 1),
+      tab('https://a.example/', 2),
+    ];
+
+    expect(computeMergeAdditions(['https://b.example'], remote)).toEqual([
+      tab('https://a.example', 0),
+      tab('https://a.example/', 2),
+    ]);
+  });
+
+  it('handles duplicate local URLs', () => {
+    const remote = [tab('https://a.example', 0), tab('https://new.example', 1, 'New')];
+
+    expect(computeMergeAdditions(['https://a.example', 'https://a.example'], remote)).toEqual([
+      tab('https://new.example', 1, 'New'),
     ]);
   });
 });
