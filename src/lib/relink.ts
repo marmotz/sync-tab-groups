@@ -1,20 +1,24 @@
 import browser from 'webextension-polyfill';
 import { devLog } from './devLog';
-import { clearAllMappings, getAllMappings, setMapping } from './localGroupMap';
+import { getAllMappings, removeMappingByLocalGroupId, setMapping } from './localGroupMap';
 import { normalizeGroupTitle } from './groupActions';
 import { clearSnapshot } from './snapshot';
 import { getAllSyncedGroups } from './syncStorage';
 
 /**
- * Tab group ids are only unique within a browser session: after a restart the restored
- * groups come back under new ids, so the persisted localGroupId -> syncId mapping is stale
- * (it either points nowhere, or at an unrelated group that reuses the id). Left alone, the
- * restored group shows up as a plain local group while its synced twin shows up as closed.
- *
- * Rebuilds the mapping from content: every previously mapped synced group is paired with
- * the restored local group sharing its (normalized) title, preferring the one with the most
- * tabs in common, each local group being claimed at most once. Returns the re-linked local
- * group ids so the caller can push their current state.
+ * Makes the persisted localGroupId -> syncId mapping consistent with the groups the browser
+ * actually restored. Never destroys a mapping it cannot disprove:
+ *  - the mapped id still exists with the same (normalized) title: the id survived the
+ *    restart, the mapping and its snapshot are kept untouched;
+ *  - otherwise the synced group is paired with the restored local group sharing its title,
+ *    preferring the one with the most tabs in common, each local group being claimed at most
+ *    once (the previous snapshot is dropped so the next sync pushes the real state);
+ *  - the mapped id is absent from the browser (session restore may not have recreated the
+ *    group yet): the mapping is kept as-is so a later run can still re-link it;
+ *  - the mapped id now belongs to an unrelated group: the mapping is dropped, otherwise that
+ *    group would be treated as shared and overwrite the synced one.
+ * Idempotent: meant to be run again shortly after startup. Returns the re-linked local group
+ * ids (new pairings only) so the caller can push their current state.
  */
 export async function relinkRestoredGroups(): Promise<number[]> {
   const [previousMappings, allSynced, localGroups, allTabs] = await Promise.all([
@@ -24,7 +28,11 @@ export async function relinkRestoredGroups(): Promise<number[]> {
     browser.tabs.query({}),
   ]);
 
-  await clearAllMappings();
+  devLog('Re-liaison : état avant', {
+    previousMappings,
+    syncedTitles: [...allSynced.values()].map((group) => ({ id: group.id, title: group.title })),
+    localGroups: localGroups.map((group) => ({ id: group.id, title: group.title })),
+  });
 
   const urlsByGroup = new Map<number, Set<string>>();
   for (const tab of allTabs) {
@@ -36,14 +44,34 @@ export async function relinkRestoredGroups(): Promise<number[]> {
     urlsByGroup.set(tab.groupId, urls);
   }
 
+  const localById = new Map(localGroups.map((group) => [group.id, group]));
   const claimed = new Set<number>();
   const relinked: number[] = [];
+  const toResolve: Array<{ localGroupId: number; syncId: string }> = [];
 
-  for (const { syncId } of previousMappings) {
-    const synced = allSynced.get(syncId);
+  // First pass: mappings that are still valid claim their local group before any title matching.
+  for (const mapping of previousMappings) {
+    const synced = allSynced.get(mapping.syncId);
     if (synced === undefined) {
-      await clearSnapshot(syncId);
+      devLog('Re-liaison : groupe synchronisé introuvable, mapping abandonné', mapping);
+      await removeMappingByLocalGroupId(mapping.localGroupId);
+      await clearSnapshot(mapping.syncId);
+      continue;
+    }
 
+    const local = localById.get(mapping.localGroupId);
+    if (local !== undefined && normalizeGroupTitle(local.title ?? '') === normalizeGroupTitle(synced.title)) {
+      claimed.add(local.id);
+      devLog(`Re-liaison : mapping conservé pour "${synced.title}" (id local inchangé)`, mapping);
+      continue;
+    }
+
+    toResolve.push(mapping);
+  }
+
+  for (const mapping of toResolve) {
+    const synced = allSynced.get(mapping.syncId);
+    if (synced === undefined) {
       continue;
     }
 
@@ -61,17 +89,28 @@ export async function relinkRestoredGroups(): Promise<number[]> {
       }
     }
 
-    // The previous snapshot no longer reflects what is open: drop it so the next sync
-    // pushes the restored group's actual state.
-    await clearSnapshot(syncId);
     if (best === undefined) {
+      if (localById.has(mapping.localGroupId)) {
+        devLog(`Re-liaison : id local réutilisé par un autre groupe, mapping de "${synced.title}" supprimé`, mapping);
+        await removeMappingByLocalGroupId(mapping.localGroupId);
+        await clearSnapshot(mapping.syncId);
+      } else {
+        devLog(`Re-liaison : groupe "${synced.title}" pas (encore) restauré, mapping conservé`, mapping);
+      }
       continue;
     }
 
     claimed.add(best.id);
-    await setMapping(best.id, syncId);
+    await removeMappingByLocalGroupId(mapping.localGroupId);
+    // The previous snapshot no longer reflects what is open: drop it so the next sync
+    // pushes the restored group's actual state.
+    await clearSnapshot(mapping.syncId);
+    await setMapping(best.id, mapping.syncId);
     relinked.push(best.id);
-    devLog(`Groupe "${synced.title}" restauré → re-lié après redémarrage`);
+    devLog(`Groupe "${synced.title}" restauré → re-lié après redémarrage`, {
+      from: mapping.localGroupId,
+      to: best.id,
+    });
   }
 
   return relinked;

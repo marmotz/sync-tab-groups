@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserMock } from '../setup';
-import { handleGroupRemoved, noteTabLeavingGroup, runSyncLocalGroup } from '../../src/background/localListeners';
+import {
+  handleGroupRemoved,
+  noteTabLeavingGroup,
+  noteWindowRemoved,
+  runSyncLocalGroup,
+} from '../../src/background/localListeners';
 import { markIntentionalClose } from '../../src/lib/intentionalClose';
 import { getLocalGroupIdForSyncId } from '../../src/lib/localGroupMap';
 
@@ -121,6 +126,31 @@ describe('handleGroupRemoved', () => {
     expect(browserMock.storage.sync.remove).not.toHaveBeenCalled();
     const stored = await browserMock.storage.sync.get('group:sync-1');
     expect(stored['group:sync-1']).toBeDefined();
+  });
+
+  it('keeps the mapping, snapshot and synced data when the group vanished because its window closed', async () => {
+    await browserMock.storage.local.set({ localGroupMap: { '7': 'sync-1' } });
+    await browserMock.storage.sync.set({ 'group:sync-1': { id: 'sync-1', title: 'Work', tabs: [] } });
+    // Even a single-tab group (which would otherwise count as "emptied tab by tab").
+    noteTabLeavingGroup(7, 1);
+    noteWindowRemoved(3);
+
+    await handleGroupRemoved(7, 'Work', 3);
+
+    expect(browserMock.storage.sync.remove).not.toHaveBeenCalled();
+    expect(await getLocalGroupIdForSyncId('sync-1')).toBe(7);
+  });
+
+  it('still unlinks the group on a deliberate close even if its window closes with it', async () => {
+    await browserMock.storage.local.set({ localGroupMap: { '7': 'sync-1' } });
+    await browserMock.storage.sync.set({ 'group:sync-1': { id: 'sync-1', title: 'Work', tabs: [] } });
+    await markIntentionalClose(7);
+    noteWindowRemoved(4);
+
+    await handleGroupRemoved(7, 'Work', 4);
+
+    expect(await getLocalGroupIdForSyncId('sync-1')).toBeUndefined();
+    expect(browserMock.storage.sync.remove).not.toHaveBeenCalled();
   });
 
   it('does nothing when the removed group had no sync mapping', async () => {

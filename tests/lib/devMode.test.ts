@@ -28,3 +28,26 @@ describe('isDevMode', () => {
     expect(browserMock.management.getSelf).not.toHaveBeenCalled();
   });
 });
+
+describe('debug mode flag', () => {
+  beforeEach(() => {
+    browserMock.storage.local.__reset();
+  });
+
+  it('is off by default and persisted once set', async () => {
+    const { isDebugMode, setDebugMode } = await import('../../src/lib/devMode');
+    expect(await isDebugMode()).toBe(false);
+    await setDebugMode(true);
+    expect(await isDebugMode()).toBe(true);
+    await setDebugMode(false);
+    expect(await isDebugMode()).toBe(false);
+  });
+
+  it('enables logging on a normal install only when the flag is set', async () => {
+    browserMock.management.getSelf.mockResolvedValue({ installType: 'normal' });
+    const { isLoggingEnabled, setDebugMode } = await import('../../src/lib/devMode');
+    expect(await isLoggingEnabled()).toBe(false);
+    await setDebugMode(true);
+    expect(await isLoggingEnabled()).toBe(true);
+  });
+});

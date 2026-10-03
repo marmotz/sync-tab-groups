@@ -110,6 +110,7 @@ async function resolveLocalGroupId(syncId: string): Promise<number | undefined> 
   if (await localGroupExists(localGroupId)) {
     return localGroupId;
   }
+  devLog(`Mapping obsolète supprimé : le groupe local ${localGroupId} n'existe plus`, { syncId });
   await removeMappingByLocalGroupId(localGroupId);
   return undefined;
 }
@@ -122,6 +123,16 @@ export async function listSyncedGroups(): Promise<SyncedGroupInfo[]> {
     const localGroupId = await resolveLocalGroupId(syncId);
     infos.push({ syncId, group, localGroupId });
   }
+
+  devLog('Popup : groupes synchronisés lus depuis storage.sync', {
+    groups: infos.map((info) => ({
+      syncId: info.syncId,
+      title: info.group.title,
+      tabCount: info.group.tabs.length,
+      updatedBy: info.group.updatedBy,
+      localGroupId: info.localGroupId ?? 'fermé ici',
+    })),
+  });
 
   infos.sort((a, b) => {
     if (a.localGroupId !== undefined && b.localGroupId !== undefined) {
@@ -304,10 +315,12 @@ export async function deleteGroupEverywhere(syncId: string, title: string): Prom
  */
 export async function forceSyncNow(): Promise<void> {
   const allSynced = await getAllSyncedGroups();
+  devLog('Synchronisation forcée : lecture de storage.sync', { syncedCount: allSynced.size });
 
   for (const [syncId, group] of allSynced) {
     const localGroupId = await resolveLocalGroupId(syncId);
     if (localGroupId === undefined) {
+      devLog(`Synchronisation forcée : "${group.title}" non ouvert ici, ignoré`, { syncId });
       continue;
     }
 

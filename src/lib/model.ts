@@ -69,3 +69,22 @@ export function groupContentEqual(a: SyncedGroup, b: SyncedGroup): boolean {
     tabsEqual(a.tabs, b.tabs)
   );
 }
+
+export interface SyncedGroupSummary {
+  id: string;
+  title: string;
+  tabCount: number;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+/** Compact, log-friendly view of a synced group (no tab payload). */
+export function summarizeGroup(group: SyncedGroup): SyncedGroupSummary {
+  return {
+    id: group.id,
+    title: group.title,
+    tabCount: group.tabs.length,
+    updatedAt: group.updatedAt,
+    updatedBy: group.updatedBy,
+  };
+}

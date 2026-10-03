@@ -6,6 +6,7 @@ function createStorageArea() {
   let data: StorageData = {};
 
   return {
+    getBytesInUse: vi.fn(async () => 0),
     get: vi.fn(async (keys?: string | string[] | StorageData | null) => {
       if (keys === null || keys === undefined) {
         return { ...data };
@@ -89,6 +90,9 @@ export const browserMock = {
     onMessage: { addListener: vi.fn() },
     onStartup: { addListener: vi.fn() },
     getURL: vi.fn((path: string) => path),
+    id: 'sync-tab-groups@test',
+    getManifest: vi.fn(() => ({ version: '0.0.0' })),
+    getBrowserInfo: vi.fn(async () => ({ name: 'Firefox', version: '140.0' })),
   },
   tabGroups: {
     get: vi.fn(),
@@ -102,6 +106,7 @@ export const browserMock = {
     getCurrent: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
+    onRemoved: { addListener: vi.fn() },
   },
   management: {
     getSelf: vi.fn(),

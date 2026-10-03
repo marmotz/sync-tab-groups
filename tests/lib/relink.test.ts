@@ -116,7 +116,9 @@ describe('relinkRestoredGroups', () => {
     mockBrowserGroups([{ id: 9, title: 'Work', urls: ['https://a.example'] }]);
 
     expect(await relinkRestoredGroups()).toEqual([9]);
-    expect(await getLocalGroupIdForSyncId('sync-2')).toBeUndefined();
+    // sync-2 found no free group: it stays pending on its old (absent) id, never on 9.
+    expect(await getLocalGroupIdForSyncId('sync-1')).toBe(9);
+    expect(await getLocalGroupIdForSyncId('sync-2')).toBe(6);
   });
 
   it('ignores mappings whose synced group no longer exists', async () => {
@@ -125,5 +127,33 @@ describe('relinkRestoredGroups', () => {
 
     expect(await relinkRestoredGroups()).toEqual([]);
     expect(await getLocalGroupIdForSyncId('gone')).toBeUndefined();
+  });
+
+  it('keeps the mapping and snapshot when the id survived the restart with the same title', async () => {
+    const group = makeGroup();
+    await setSyncedGroup(group);
+    await setSnapshot(group.id, group);
+    await setMapping(5, group.id);
+    mockBrowserGroups([{ id: 5, title: 'work', urls: ['https://a.example', 'https://b.example'] }]);
+
+    expect(await relinkRestoredGroups()).toEqual([]);
+    expect(await getLocalGroupIdForSyncId(group.id)).toBe(5);
+    expect(await getSnapshot(group.id)).toBeDefined();
+  });
+
+  it('keeps the mapping while the group is not restored yet, then re-links it on the next run', async () => {
+    const group = makeGroup();
+    await setSyncedGroup(group);
+    await setSnapshot(group.id, group);
+    await setMapping(5, group.id);
+
+    mockBrowserGroups([]);
+    expect(await relinkRestoredGroups()).toEqual([]);
+    expect(await getLocalGroupIdForSyncId(group.id)).toBe(5);
+    expect(await getSnapshot(group.id)).toBeDefined();
+
+    mockBrowserGroups([{ id: 9, title: 'Work', urls: ['https://a.example'] }]);
+    expect(await relinkRestoredGroups()).toEqual([9]);
+    expect(await getLocalGroupIdForSyncId(group.id)).toBe(9);
   });
 });

@@ -8,6 +8,15 @@
   "syncNowTitle": {
     "message": "Sync now"
   },
+  "debugModeEnabled": {
+    "message": "Debug mode enabled 😉"
+  },
+  "debugDumpDone": {
+    "message": "Debug dump copied and logged in the console"
+  },
+  "debugDumpConsoleOnly": {
+    "message": "Debug dump logged in the console (clipboard unavailable)"
+  },
   "sectionLocalGroups": {
     "message": "Local groups"
   },

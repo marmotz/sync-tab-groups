@@ -93,6 +93,23 @@ body {
   color: var(--text-muted);
 }
 
+.brand-debug {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #fff;
+  background: #7c3aed;
+  border: none;
+  cursor: pointer;
+}
+
+.brand-debug[hidden] {
+  display: none;
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -266,4 +283,19 @@ body::-webkit-scrollbar {
 body::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 4px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  background: #7c3aed;
+  box-shadow: var(--shadow);
+  pointer-events: none;
 }

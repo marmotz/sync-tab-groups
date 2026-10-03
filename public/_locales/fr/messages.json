@@ -8,6 +8,15 @@
   "syncNowTitle": {
     "message": "Synchroniser maintenant"
   },
+  "debugModeEnabled": {
+    "message": "Mode debug activé 😉"
+  },
+  "debugDumpDone": {
+    "message": "Dump debug copié et affiché dans la console"
+  },
+  "debugDumpConsoleOnly": {
+    "message": "Dump debug affiché dans la console (presse-papiers indisponible)"
+  },
   "sectionLocalGroups": {
     "message": "Groupes locaux"
   },

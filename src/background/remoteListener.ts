@@ -1,9 +1,9 @@
 import browser from 'webextension-polyfill';
 import { getDeviceId } from '../lib/deviceId';
 import { devLog } from '../lib/devLog';
-import { isDevMode } from '../lib/devMode';
+import { isLoggingEnabled } from '../lib/devMode';
 import { getLocalGroupIdForSyncId, removeMappingBySyncId } from '../lib/localGroupMap';
-import { isSyncedGroupKey, syncedGroupIdFromKey, type SyncedGroup } from '../lib/model';
+import { isSyncedGroupKey, summarizeGroup, syncedGroupIdFromKey, type SyncedGroup } from '../lib/model';
 import { applyRemoteGroup } from '../lib/reconciler';
 import { clearSnapshot, setSnapshot } from '../lib/snapshot';
 
@@ -19,10 +19,19 @@ async function handleChange(
   const syncId = syncedGroupIdFromKey(key);
   const localGroupId = await getLocalGroupIdForSyncId(syncId);
 
+  devLog(`storage.sync changé : ${key}`, {
+    syncId,
+    kind: oldValue === undefined ? 'added' : newValue === undefined ? 'removed' : 'modified',
+    old: oldValue && summarizeGroup(oldValue),
+    new: newValue && summarizeGroup(newValue),
+    localGroupId: localGroupId ?? 'aucun mapping (groupe non partagé/ouvert ici)',
+  });
+
   if (newValue === undefined) {
     devLog(`Groupe "${oldValue?.title ?? syncId}" supprimé partout ← reçu`);
 
     if (localGroupId === undefined) {
+      devLog(`Suppression reçue pour ${syncId} : aucun mapping local, rien à faire`);
       return;
     }
 
@@ -34,7 +43,10 @@ async function handleChange(
 
   const deviceId = await getDeviceId();
   if (newValue.updatedBy === deviceId) {
-    devLog(`Écho ignoré : "${newValue.title}" vient de notre propre écriture`);
+    devLog(`Écho ignoré : "${newValue.title}" vient de notre propre écriture`, {
+      deviceId,
+      updatedBy: newValue.updatedBy,
+    });
     return;
   }
 
@@ -43,10 +55,13 @@ async function handleChange(
   }
 
   if (localGroupId === undefined) {
+    devLog(`Mise à jour reçue pour "${newValue.title}" mais aucun mapping local : ignorée (groupe fermé/non lié ici)`, {
+      syncId,
+    });
     return;
   }
 
-  const devMode = await isDevMode();
+  const devMode = await isLoggingEnabled();
   await applyRemoteGroup(
     localGroupId,
     newValue,
@@ -61,6 +76,7 @@ async function handleChange(
       : undefined,
   );
   await setSnapshot(syncId, newValue);
+  devLog(`Mise à jour reçue appliquée sur le groupe local ${localGroupId}`, { syncId });
 }
 
 export function registerRemoteListener(): void {
@@ -68,6 +84,8 @@ export function registerRemoteListener(): void {
     if (areaName !== 'sync') {
       return;
     }
+
+    devLog('storage.onChanged (sync)', { keys: Object.keys(changes) });
 
     for (const [key, change] of Object.entries(changes)) {
       void handleChange(

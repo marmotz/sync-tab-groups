@@ -5,7 +5,7 @@ import { devLog } from '../lib/devLog';
 import { consumeIntentionalClose } from '../lib/intentionalClose';
 import { getAllMappedLocalGroupIds, getSyncIdForLocalGroup, removeMappingByLocalGroupId } from '../lib/localGroupMap';
 import { readLocalGroupState } from '../lib/localState';
-import { diffTabUrls, groupContentEqual } from '../lib/model';
+import { diffTabUrls, groupContentEqual, summarizeGroup } from '../lib/model';
 import { clearSnapshot, getSnapshot, setSnapshot } from '../lib/snapshot';
 import { removeSyncedGroup, setSyncedGroup } from '../lib/syncStorage';
 import { resolveTabGroupChange } from '../lib/tabGroupTracking';
@@ -54,20 +54,34 @@ function scheduleSync(localGroupId: number): void {
 async function syncLocalGroup(localGroupId: number): Promise<void> {
   const syncId = await getSyncIdForLocalGroup(localGroupId);
   if (syncId === undefined) {
+    devLog(`Sync locale ignorée : groupe local ${localGroupId} sans mapping (non partagé)`);
     return;
   }
 
   let currentState;
   try {
     currentState = await readLocalGroupState(localGroupId, syncId, await getDeviceId());
-  } catch {
+  } catch (error) {
+    devLog(`Sync locale abandonnée : lecture du groupe local ${localGroupId} impossible`, {
+      syncId,
+      error: String(error),
+    });
     return;
   }
 
   const previousSnapshot = await getSnapshot(syncId);
   if (previousSnapshot !== undefined && groupContentEqual(previousSnapshot, currentState)) {
+    devLog(`Sync locale ignorée : "${currentState.title}" identique au snapshot`, { syncId, localGroupId });
     return;
   }
+
+  devLog(`Sync locale : écriture de "${currentState.title}" dans storage.sync`, {
+    syncId,
+    localGroupId,
+    hadSnapshot: previousSnapshot !== undefined,
+    snapshot: previousSnapshot && summarizeGroup(previousSnapshot),
+    current: summarizeGroup(currentState),
+  });
 
   if (previousSnapshot !== undefined) {
     const { added, removed } = diffTabUrls(previousSnapshot.tabs, currentState.tabs);
@@ -86,7 +100,31 @@ async function syncLocalGroup(localGroupId: number): Promise<void> {
   await setSnapshot(syncId, currentState);
 }
 
-export async function handleGroupRemoved(localGroupId: number, title: string | undefined): Promise<void> {
+// Closing a window (or quitting the browser) removes the tab groups it contains, with the
+// same tabGroups.onRemoved events as closing a group on purpose. windows.onRemoved fires
+// just before them, so remembering it for a short grace period lets us tell the two apart:
+// a group that only vanished because its window closed must stay mapped (the browser
+// restores it with the same id on the next launch).
+const WINDOW_CLOSE_GRACE_MS = 2000;
+const recentlyRemovedWindows = new Map<number, number>();
+
+export function noteWindowRemoved(windowId: number): void {
+  recentlyRemovedWindows.set(windowId, Date.now());
+}
+
+function wasWindowJustRemoved(windowId: number | undefined): boolean {
+  if (windowId === undefined) {
+    return false;
+  }
+  const removedAt = recentlyRemovedWindows.get(windowId);
+  return removedAt !== undefined && Date.now() - removedAt <= WINDOW_CLOSE_GRACE_MS;
+}
+
+export async function handleGroupRemoved(
+  localGroupId: number,
+  title: string | undefined,
+  windowId?: number,
+): Promise<void> {
   const timer = pendingTimers.get(localGroupId);
   if (timer !== undefined) {
     clearTimeout(timer);
@@ -95,6 +133,7 @@ export async function handleGroupRemoved(localGroupId: number, title: string | u
 
   const syncId = await getSyncIdForLocalGroup(localGroupId);
   if (syncId === undefined) {
+    devLog(`tabGroups.onRemoved : groupe local ${localGroupId} sans mapping, rien à faire`);
     return;
   }
 
@@ -106,7 +145,21 @@ export async function handleGroupRemoved(localGroupId: number, title: string | u
   // meaningful left to keep synced. Default to preserving when we can't tell (e.g. the
   // background script just restarted and tracking wasn't seeded yet) to avoid silent
   // data loss.
-  const emptiedTabByTab = !wasIntentional && sizeBeforeRemoval === 1;
+  const closedWithWindow = !wasIntentional && wasWindowJustRemoved(windowId);
+  const emptiedTabByTab = !wasIntentional && !closedWithWindow && sizeBeforeRemoval === 1;
+  devLog(`tabGroups.onRemoved : groupe local ${localGroupId} ("${title ?? ''}")`, {
+    syncId,
+    wasIntentional,
+    sizeBeforeRemoval,
+    emptiedTabByTab,
+    closedWithWindow,
+    windowId,
+  });
+
+  if (closedWithWindow) {
+    devLog(`Groupe "${title ?? ''}" retiré avec sa fenêtre : mapping et données de sync conservés`);
+    return;
+  }
 
   if (!emptiedTabByTab) {
     devLog(`Groupe "${title ?? ''}" fermé sur ce device (reste synchronisé, réouvrable ailleurs)`);
@@ -220,7 +273,11 @@ export function registerLocalListeners(): void {
   browser.tabGroups.onCreated.addListener((group) => scheduleSync(group.id));
   browser.tabGroups.onUpdated.addListener((group) => scheduleSync(group.id));
   browser.tabGroups.onRemoved.addListener((group) => {
-    void handleGroupRemoved(group.id, group.title);
+    void handleGroupRemoved(group.id, group.title, group.windowId);
+  });
+  browser.windows.onRemoved.addListener((windowId) => {
+    devLog('Fenêtre fermée', { windowId });
+    noteWindowRemoved(windowId);
   });
 
   browser.tabs.onCreated.addListener(scheduleForTab);

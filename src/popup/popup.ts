@@ -11,6 +11,10 @@ import {
   type LocalGroupInfo,
   type SyncedGroupInfo,
 } from '../lib/groupActions';
+import { DEBUG_LOG_KEY } from '../lib/devLog';
+import { buildDebugDump } from '../lib/diagnostics';
+import { isDebugMode, setDebugMode } from '../lib/devMode';
+import { createTripleClickDetector } from './debugToggle';
 import { runMergeChoice, type MergeChoice } from './conflictChoice';
 import { t } from '../lib/i18n';
 
@@ -265,13 +269,84 @@ function renderClosedSection(groups: SyncedGroupInfo[]): HTMLElement {
   return el;
 }
 
-browser.storage.onChanged.addListener(() => {
+browser.storage.onChanged.addListener((changes) => {
+  // The persisted debug log is rewritten on every devLog(): reacting to it would loop,
+  // since rendering itself logs.
+  if (Object.keys(changes).every((key) => key === DEBUG_LOG_KEY)) {
+    return;
+  }
   scheduleRender();
 });
 
 const brandVersion = document.getElementById('brand-version');
 if (brandVersion !== null) {
   brandVersion.textContent = `v${browser.runtime.getManifest().version}`;
+}
+
+const TOAST_DURATION_MS = 2500;
+
+function showToast(message: string): void {
+  document.querySelector('.toast')?.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.setAttribute('role', 'status');
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), TOAST_DURATION_MS);
+}
+
+const brandIcon = document.querySelector('.brand-icon');
+const debugBadge = document.getElementById('debug-badge');
+
+function showDebugBadge(enabled: boolean): void {
+  if (debugBadge !== null) {
+    debugBadge.hidden = !enabled;
+  }
+}
+
+void isDebugMode().then(showDebugBadge);
+
+async function dumpDebugState(): Promise<void> {
+  const dump = await buildDebugDump();
+  const json = JSON.stringify(dump, null, 2);
+  console.log('[sync-tab-group] debug dump', dump);
+
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(json);
+    copied = true;
+  } catch {
+    // clipboard unavailable: the console output above is the fallback
+  }
+  showToast(t(copied ? 'debugDumpDone' : 'debugDumpConsoleOnly'));
+}
+
+debugBadge?.addEventListener('click', () => {
+  void dumpDebugState().catch((error: unknown) => {
+    console.error('Failed to build debug dump', error);
+  });
+});
+
+if (brandIcon !== null) {
+  const isTripleClick = createTripleClickDetector();
+  brandIcon.addEventListener('click', () => {
+    if (!isTripleClick()) {
+      return;
+    }
+    void isDebugMode()
+      .then(async (current) => {
+        await setDebugMode(!current);
+        showDebugBadge(!current);
+        if (!current) {
+          showToast(t('debugModeEnabled'));
+        }
+        console.log(`[sync-tab-group] debug mode ${!current ? 'enabled' : 'disabled'}`);
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to toggle debug mode', error);
+      });
+  });
 }
 
 const syncNowButton = document.getElementById('sync-now');
