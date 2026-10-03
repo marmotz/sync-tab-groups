@@ -52,5 +52,16 @@ export async function removeMappingBySyncId(syncId: string): Promise<void> {
 
 export async function getAllMappedLocalGroupIds(): Promise<Set<number>> {
   const map = await readMap();
+
   return new Set(Object.keys(map).map(Number));
+}
+
+export async function getAllMappings(): Promise<Array<{ localGroupId: number; syncId: string }>> {
+  const map = await readMap();
+
+  return Object.entries(map).map(([localId, syncId]) => ({ localGroupId: Number(localId), syncId }));
+}
+
+export async function clearAllMappings(): Promise<void> {
+  await writeMap({});
 }

@@ -87,6 +87,7 @@ export const browserMock = {
   runtime: {
     sendMessage: vi.fn(),
     onMessage: { addListener: vi.fn() },
+    onStartup: { addListener: vi.fn() },
     getURL: vi.fn((path: string) => path),
   },
   tabGroups: {
