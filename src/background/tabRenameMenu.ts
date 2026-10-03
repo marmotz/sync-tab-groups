@@ -1,6 +1,7 @@
 import browser from 'webextension-polyfill';
 import type { Runtime, Tabs } from 'webextension-polyfill';
-import { GET_CUSTOM_TITLE_MESSAGE } from '../lib/messages';
+import { GET_CUSTOM_TITLE_MESSAGE, TAB_CUSTOM_TITLE_CHANGED_MESSAGE } from '../lib/messages';
+import { scheduleSyncForTabId } from './localListeners';
 import { applyCustomTitle, clearCustomTitle, getCustomTitle, isTabRenamable } from '../lib/tabTitle';
 import { t } from '../lib/i18n';
 
@@ -63,6 +64,7 @@ async function handleReset(tab: Tabs.Tab): Promise<void> {
   // The real title was overwritten in the page's DOM and cannot be recovered without
   // asking the page to render itself again.
   await browser.tabs.reload(tab.id);
+  await scheduleSyncForTabId(tab.id);
 }
 
 async function updateMenuVisibility(tab: Tabs.Tab): Promise<void> {
@@ -94,6 +96,15 @@ async function reapplyAllOpenTabs(): Promise<void> {
       await applyCustomTitle(tab.id, custom);
     }
   }
+}
+
+function isTabCustomTitleChangedMessage(message: unknown): message is { type: string; tabId: number } {
+  return (
+    typeof message === 'object' &&
+    message !== null &&
+    (message as { type?: unknown }).type === TAB_CUSTOM_TITLE_CHANGED_MESSAGE &&
+    typeof (message as { tabId?: unknown }).tabId === 'number'
+  );
 }
 
 export function registerTabRenameMenu(): void {
@@ -128,9 +139,14 @@ export function registerTabRenameMenu(): void {
   });
 
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
+    if (isTabCustomTitleChangedMessage(message)) {
+      return scheduleSyncForTabId(message.tabId);
+    }
+
     if (message !== GET_CUSTOM_TITLE_MESSAGE || sender.tab?.id === undefined) {
       return undefined;
     }
+
     return getCustomTitle(sender.tab.id);
   });
 

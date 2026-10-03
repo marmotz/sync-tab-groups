@@ -1,4 +1,6 @@
+import browser from 'webextension-polyfill';
 import { t } from '../lib/i18n';
+import { TAB_CUSTOM_TITLE_CHANGED_MESSAGE } from '../lib/messages';
 import { applyCustomTitle, setCustomTitle } from '../lib/tabTitle';
 
 const params = new URLSearchParams(window.location.search);
@@ -49,5 +51,6 @@ form.addEventListener('submit', (event) => {
 
   void setCustomTitle(tabId, newTitle)
     .then(() => applyCustomTitle(tabId, newTitle))
+    .then(() => browser.runtime.sendMessage({ type: TAB_CUSTOM_TITLE_CHANGED_MESSAGE, tabId }))
     .finally(() => window.close());
 });

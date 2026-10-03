@@ -2,6 +2,7 @@ export interface SyncedTab {
   url: string;
   title: string;
   index: number;
+  customTitle?: string;
 }
 
 export interface SyncedGroup {
@@ -35,7 +36,13 @@ export function tabsEqual(a: SyncedTab[], b: SyncedTab[]): boolean {
 
   return a.every((tabA, i) => {
     const tabB = b[i];
-    return tabB !== undefined && tabA.url === tabB.url && tabA.title === tabB.title && tabA.index === tabB.index;
+    return (
+      tabB !== undefined &&
+      tabA.url === tabB.url &&
+      tabA.title === tabB.title &&
+      tabA.index === tabB.index &&
+      tabA.customTitle === tabB.customTitle
+    );
   });
 }
 

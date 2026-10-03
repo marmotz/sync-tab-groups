@@ -105,6 +105,7 @@ describe('onClicked - rename', () => {
 
 describe('onClicked - reset', () => {
   it('clears the stored title and reloads the tab', async () => {
+    browserMock.tabs.get.mockResolvedValue({ id: 5, groupId: 7 });
     registerTabRenameMenu();
     const onClicked = getListener(browserMock.contextMenus.onClicked);
 
@@ -113,6 +114,7 @@ describe('onClicked - reset', () => {
 
     expect(browserMock.sessions.removeTabValue).toHaveBeenCalledWith(5, 'customTitle');
     expect(browserMock.tabs.reload).toHaveBeenCalledWith(5);
+    expect(browserMock.tabs.get).toHaveBeenCalledWith(5);
   });
 });
 
@@ -216,5 +218,27 @@ describe('runtime.onMessage - answering the content script', () => {
 
     expect(result).toBeUndefined();
     expect(browserMock.sessions.getTabValue).not.toHaveBeenCalled();
+  });
+});
+
+describe('runtime.onMessage - custom title changed from the rename window', () => {
+  it('looks up the tab to resync its group', async () => {
+    browserMock.tabs.get.mockResolvedValue({ id: 5, groupId: 7 });
+    registerTabRenameMenu();
+    const onMessage = getListener(browserMock.runtime.onMessage);
+
+    await onMessage({ type: 'sync-tab-groups/tab-custom-title-changed', tabId: 5 }, {});
+
+    expect(browserMock.tabs.get).toHaveBeenCalledWith(5);
+  });
+
+  it('ignores a malformed message', () => {
+    registerTabRenameMenu();
+    const onMessage = getListener(browserMock.runtime.onMessage);
+
+    const result = onMessage({ type: 'sync-tab-groups/tab-custom-title-changed', tabId: 'x' }, {});
+
+    expect(result).toBeUndefined();
+    expect(browserMock.tabs.get).not.toHaveBeenCalled();
   });
 });

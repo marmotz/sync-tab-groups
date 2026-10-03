@@ -58,6 +58,26 @@ describe('tabsEqual', () => {
     expect(tabsEqual(a, b)).toBe(false);
   });
 
+  it('is false when a custom title was added, changed or removed', () => {
+    const a = makeGroup().tabs;
+    const b = makeGroup().tabs;
+    b[0]!.customTitle = 'Renamed';
+    expect(tabsEqual(a, b)).toBe(false);
+
+    const c = makeGroup().tabs;
+    c[0]!.customTitle = 'Other';
+    expect(tabsEqual(b, c)).toBe(false);
+    expect(tabsEqual(b, makeGroup().tabs)).toBe(false);
+  });
+
+  it('is true when both tabs carry the same custom title', () => {
+    const a = makeGroup().tabs;
+    const b = makeGroup().tabs;
+    a[0]!.customTitle = 'Renamed';
+    b[0]!.customTitle = 'Renamed';
+    expect(tabsEqual(a, b)).toBe(true);
+  });
+
   it('is false when order differs', () => {
     const a = makeGroup().tabs;
     const b = [...makeGroup().tabs].reverse();

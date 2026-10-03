@@ -73,3 +73,23 @@ export async function isTabRenamable(tab: Pick<Tabs.Tab, 'id' | 'url' | 'discard
     return false;
   }
 }
+
+// Aligns a local tab on the custom title received from another device. Nothing is done
+// when it already matches. Clearing reloads the tab, as the real page title was
+// overwritten in the DOM and can only be recovered by rendering the page again.
+export async function applyRemoteCustomTitle(tabId: number, customTitle: string | undefined): Promise<void> {
+  const current = await getCustomTitle(tabId);
+  if (current === customTitle) {
+    return;
+  }
+
+  if (customTitle === undefined) {
+    await clearCustomTitle(tabId);
+    await browser.tabs.reload(tabId);
+
+    return;
+  }
+
+  await setCustomTitle(tabId, customTitle);
+  await applyCustomTitle(tabId, customTitle);
+}

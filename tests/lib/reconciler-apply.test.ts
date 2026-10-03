@@ -125,6 +125,57 @@ describe('applyRemoteGroup', () => {
     expect(browserMock.tabs.group).toHaveBeenCalledWith({ tabIds: 3, groupId: 7 });
   });
 
+  it('applies remote custom titles to matched and newly created tabs', async () => {
+    const remoteGroup: SyncedGroup = {
+      id: 'sync-1',
+      title: 'Work',
+      color: 'grey',
+      collapsed: false,
+      tabs: [
+        { url: 'https://a.example', title: 'A', index: 0, customTitle: 'Renamed A' },
+        { url: 'https://new.example', title: 'New', index: 1, customTitle: 'Renamed New' },
+      ],
+      updatedAt: 1,
+      updatedBy: 'device-2',
+    };
+
+    browserMock.tabGroups.get.mockResolvedValue({ id: 7, windowId: 1, title: '', color: 'grey', collapsed: false });
+    browserMock.tabs.query
+      .mockResolvedValueOnce([{ id: 1, index: 0, url: 'https://a.example' }])
+      .mockResolvedValueOnce([{ id: 1, index: 0, url: 'https://a.example' }]);
+    browserMock.tabs.create.mockResolvedValue({ id: 3 });
+    browserMock.sessions.getTabValue.mockResolvedValue(undefined);
+    browserMock.scripting.executeScript.mockResolvedValue([{ frameId: 0 }]);
+
+    await applyRemoteGroup(7, remoteGroup);
+
+    expect(browserMock.sessions.setTabValue).toHaveBeenCalledWith(1, 'customTitle', 'Renamed A');
+    expect(browserMock.sessions.setTabValue).toHaveBeenCalledWith(3, 'customTitle', 'Renamed New');
+  });
+
+  it('clears a local custom title that is absent from the remote tab', async () => {
+    const remoteGroup: SyncedGroup = {
+      id: 'sync-1',
+      title: 'Work',
+      color: 'grey',
+      collapsed: false,
+      tabs: [{ url: 'https://a.example', title: 'A', index: 0 }],
+      updatedAt: 1,
+      updatedBy: 'device-2',
+    };
+
+    browserMock.tabGroups.get.mockResolvedValue({ id: 7, windowId: 1, title: '', color: 'grey', collapsed: false });
+    browserMock.tabs.query
+      .mockResolvedValueOnce([{ id: 1, index: 0, url: 'https://a.example' }])
+      .mockResolvedValueOnce([{ id: 1, index: 0, url: 'https://a.example' }]);
+    browserMock.sessions.getTabValue.mockResolvedValue('Old name');
+
+    await applyRemoteGroup(7, remoteGroup);
+
+    expect(browserMock.sessions.removeTabValue).toHaveBeenCalledWith(1, 'customTitle');
+    expect(browserMock.tabs.reload).toHaveBeenCalledWith(1);
+  });
+
   it('works without an onAction callback', async () => {
     const remoteGroup: SyncedGroup = {
       id: 'sync-1',

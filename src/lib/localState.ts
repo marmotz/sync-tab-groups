@@ -1,5 +1,6 @@
 import browser from 'webextension-polyfill';
 import type { SyncedGroup, SyncedTab } from './model';
+import { getCustomTitle } from './tabTitle';
 
 export async function readLocalGroupState(
   localGroupId: number,
@@ -10,11 +11,18 @@ export async function readLocalGroupState(
   const tabs = await browser.tabs.query({ groupId: localGroupId });
 
   const sortedTabs = [...tabs].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-  const syncedTabs: SyncedTab[] = sortedTabs.map((tab, i) => ({
-    url: tab.url ?? '',
-    title: tab.title ?? '',
-    index: i,
-  }));
+  const syncedTabs: SyncedTab[] = await Promise.all(
+    sortedTabs.map(async (tab, i) => {
+      const syncedTab: SyncedTab = { url: tab.url ?? '', title: tab.title ?? '', index: i };
+      const customTitle = tab.id === undefined ? undefined : await getCustomTitle(tab.id);
+
+      if (customTitle !== undefined) {
+        syncedTab.customTitle = customTitle;
+      }
+
+      return syncedTab;
+    }),
+  );
 
   return {
     id: syncId,

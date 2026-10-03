@@ -205,6 +205,15 @@ function scheduleForTab(tab: Pick<Tabs.Tab, 'id' | 'groupId'>): void {
   }
 }
 
+// Pushes a change that browser tab events don't report (a custom title set or reset
+// through our own UI) to the synced group the tab belongs to.
+export async function scheduleSyncForTabId(tabId: number): Promise<void> {
+  const tab = await browser.tabs.get(tabId);
+  if (tab.groupId !== undefined && tab.groupId !== -1) {
+    scheduleSync(tab.groupId);
+  }
+}
+
 export function registerLocalListeners(): void {
   void seedGroupIdTracking();
 

@@ -1,6 +1,7 @@
 import browser from 'webextension-polyfill';
 import type { TabGroups } from 'webextension-polyfill';
 import type { SyncedGroup, SyncedTab } from './model';
+import { applyRemoteCustomTitle } from './tabTitle';
 
 export interface LocalTabRef {
   id: number;
@@ -108,6 +109,10 @@ export async function applyRemoteGroup(
 
   for (const [groupIndex, tabId] of [...tabIdByGroupIndex.entries()].sort((a, b) => a[0] - b[0])) {
     await browser.tabs.move(tabId, { index: baseIndex + groupIndex });
+  }
+
+  for (const [groupIndex, tabId] of tabIdByGroupIndex) {
+    await applyRemoteCustomTitle(tabId, remoteGroup.tabs[groupIndex]?.customTitle);
   }
 
   await browser.tabGroups.update(localGroupId, {

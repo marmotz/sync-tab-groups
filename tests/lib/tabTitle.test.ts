@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserMock } from '../setup';
 import {
   applyCustomTitle,
+  applyRemoteCustomTitle,
   clearCustomTitle,
   getCustomTitle,
   isTabRenamable,
@@ -92,5 +93,38 @@ describe('isTabRenamable', () => {
       expect(await isTabRenamable({ id: 1, url: 'about:addons', discarded: true })).toBe(false);
       expect(await isTabRenamable({ id: 1, url: undefined, discarded: true })).toBe(false);
     });
+  });
+});
+
+describe('applyRemoteCustomTitle', () => {
+  it('does nothing when the tab already has that title', async () => {
+    browserMock.sessions.getTabValue.mockResolvedValue('Same');
+    await applyRemoteCustomTitle(1, 'Same');
+    expect(browserMock.sessions.setTabValue).not.toHaveBeenCalled();
+    expect(browserMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when neither side has a custom title', async () => {
+    browserMock.sessions.getTabValue.mockResolvedValue(undefined);
+    await applyRemoteCustomTitle(1, undefined);
+    expect(browserMock.sessions.removeTabValue).not.toHaveBeenCalled();
+    expect(browserMock.tabs.reload).not.toHaveBeenCalled();
+  });
+
+  it('stores and injects a new remote title', async () => {
+    browserMock.sessions.getTabValue.mockResolvedValue(undefined);
+    browserMock.scripting.executeScript.mockResolvedValue([{ frameId: 0 }]);
+    await applyRemoteCustomTitle(1, 'Remote');
+    expect(browserMock.sessions.setTabValue).toHaveBeenCalledWith(1, 'customTitle', 'Remote');
+    expect(browserMock.scripting.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { tabId: 1 }, args: ['Remote'] }),
+    );
+  });
+
+  it('clears the title and reloads the tab when the remote one was reset', async () => {
+    browserMock.sessions.getTabValue.mockResolvedValue('Old');
+    await applyRemoteCustomTitle(1, undefined);
+    expect(browserMock.sessions.removeTabValue).toHaveBeenCalledWith(1, 'customTitle');
+    expect(browserMock.tabs.reload).toHaveBeenCalledWith(1);
   });
 });
