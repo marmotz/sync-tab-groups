@@ -7,7 +7,7 @@ live-synced, or close it without losing it.
 
 ## Features
 
-- Share any local tab group: its title, color, collapsed state and tab list (URL, title, order) are synced.
+- Share any local tab group: its title, color, collapsed state and tab list (URL, title, custom title, order) are synced.
 - Live two-way sync: while a synced group is open on several devices, adding, removing or reordering tabs, renaming the
   group or changing its color on one device is applied on the others.
 - Open a synced group on a device where it is not open yet. Closing it there keeps it available in the cloud.
@@ -15,7 +15,8 @@ live-synced, or close it without losing it.
 - Same-name conflict handling: opening a synced group when a local group has the same name (case and surrounding spaces
   ignored) offers to rename the local group, keep the local tabs, keep the cloud tabs, or merge both.
 - "Sync now" button to force a local catch-up.
-- Custom tab titles: right-click a tab, then "Rename tab" (and "Reset title" to undo). Local to the device, see the FAQ.
+- Custom tab titles: right-click a tab, then "Rename tab" (and "Reset title" to undo). Synced with the group, see the
+  FAQ.
 - English and French interface.
 
 ## Requirements
@@ -114,8 +115,12 @@ where it is open. The synced group keeps its identity, so it does not create a d
 
 ### What happens if I rename a single tab?
 
-The custom tab title (right-click on a tab, then "Rename tab") is stored locally in the browser session and re-applied
-by a content script. It is not synced: other devices keep showing the page's real title.
+The custom tab title (right-click on a tab, then "Rename tab") is stored in the browser session and re-applied by a
+content script. When the tab belongs to a synced group, the custom title is synced with the group: other devices where
+the group is open apply it to the matching tab, including tabs they create from the sync.
+
+Using "Reset title" on one device clears the custom title on the others too. Since the real page title was overwritten in
+the page, the tab is reloaded to get it back. Tabs outside a synced group keep their custom title local to the device.
 
 ### What if a group with the same name already exists on the device where I open a synced group?
 

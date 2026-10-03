@@ -1,6 +1,6 @@
 {
   "name": "sync-tab-groups",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Synchronizes Firefox tab groups and their content across devices",
   "private": true,
   "type": "module",
@@ -18,7 +18,8 @@
     "web-ext:sign:command": "bun run build && bun run source:archive && web-ext sign --source-dir dist --artifacts-dir builds --channel listed --approval-timeout 0 --upload-source-code builds/source.zip --api-key=\"$WEB_EXT_API_KEY\" --api-secret=\"$WEB_EXT_API_SECRET\"",
     "web-ext:sign:dev": "bun --env-file=.env run web-ext:sign:dev:command",
     "web-ext:sign:dev:command": "bun run build && web-ext sign --source-dir dist --artifacts-dir builds --channel unlisted --approval-timeout 0 --api-key=\"$WEB_EXT_API_KEY\" --api-secret=\"$WEB_EXT_API_SECRET\"",
-    "source:archive": "bun run scripts/create-source-archive.ts"
+    "source:archive": "bun run scripts/create-source-archive.ts",
+    "release": "bun run web-ext:sign"
   },
   "devDependencies": {
     "@types/archiver": "^8.0.0",
